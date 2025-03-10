@@ -253,11 +253,9 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
         # Only plot the matrix with the pair of the gene of interest and the rest of the genes
         if plot:
             plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, plots_dir)
+        num_genes_same_comm = len(union_genes)
     else:
         num_genes_same_comm = None
-
-
-
 
     return consensus, coassoc, partitions, num_genes_same_comm
 
