@@ -102,7 +102,7 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
         num_genes_same_comm = len(union_genes)
     else:
         num_genes_same_comm = None
-    return consensus, coassoc, partitions, num_genes_same_comm
+    return consensus, coassoc, partitions, num_genes_same_comm, nodes
     
 
 import plotly.express as px
@@ -178,32 +178,174 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
 
     return fig
 
+import pandas as pd
+
+def save_gene_frequencies_to_csv(nodes, coassoc, gene_of_interest, run_count, save_dir="gene_frequencies"):
+    """
+    Saves the coassociation frequencies of all genes with respect to the given gene_of_interest to a CSV file.
+    
+    Parameters:
+        nodes (list): List of gene names.
+        coassoc (np.ndarray): Coassociation matrix.
+        gene_of_interest (str): The target gene for which frequencies are extracted.
+        run_count (int): The number of Louvain runs for this iteration.
+        save_dir (str): Directory where the CSV file will be saved.
+    
+    Returns:
+        None (saves the file in the specified directory).
+    """
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)  # Create directory if it does not exist
+
+    try:
+        gene_index = nodes.index(gene_of_interest)
+        gene_frequencies = [
+            {"Gene": gene, "Coassociation Frequency": coassoc[gene_index, i]}
+            for i, gene in enumerate(nodes)
+        ]
+        
+        # Convert to a DataFrame and sort by frequency (descending)
+        df = pd.DataFrame(gene_frequencies)
+        
+        # Remove the gene of interest itself.
+        df = df[df['Gene'] != gene_of_interest]
+
+        df = df.sort_values(by="Coassociation Frequency", ascending=False)
+
+        # Define CSV file name
+        csv_filename = f"{gene_of_interest}_coassoc_{run_count}_runs.csv"
+        csv_path = os.path.join(save_dir, csv_filename)
+
+        # Save DataFrame as CSV
+        df.to_csv(csv_path, index=False)
+        print(f"Gene frequencies saved to {csv_path}")
+
+    except ValueError:
+        print(f"Gene {gene_of_interest} not found in the network.")
+
+def compute_quantile_thresholds(coassoc, nodes, quantiles=[0.90, 0.95]):
+    """
+    Compute the coassociation frequency thresholds for given quantiles.
+
+    Parameters:
+        coassoc (np.ndarray): The coassociation matrix.
+        nodes (list): List of gene names corresponding to coassoc.
+        quantiles (list): List of quantiles to compute thresholds for.
+
+    Returns:
+        dict: A dictionary of quantile thresholds.
+    """
+    # Flatten coassociation values (excluding self-associations)
+    freq_values = coassoc.flatten()
+    freq_values = freq_values[freq_values > 0]  # Remove zero values
+
+    # Compute quantiles
+    thresholds = {q: np.quantile(freq_values, q) for q in quantiles}
+
+    return thresholds
+
 if __name__ == '__main__':
     # Change working directory to the directory of the script
     abspath = os.path.abspath(__file__)
     dname = os.path.dirname(abspath)
     os.chdir(dname)
-    nruns = [2,3,4,5]
-    #nruns = [100,200,300,400,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
+
+    # Parameters
     pvalue_global = 0.0004
     p_threshold = 0.0004
     genelist_global = ["ZEB2"]
-    debug_print(os.getcwd())
+    debug_log(f"Starting stability check for {genelist_global}")
+
+    # Load gene pairs and build the network
     filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results.csv",
-                                                    p_threshold=pvalue_global,
-                                                    starting_genes=genelist_global,
-                                                    higher_threshold_for_starting_genes=pvalue_global)
+                                               p_threshold=pvalue_global,
+                                               starting_genes=genelist_global,
+                                               higher_threshold_for_starting_genes=pvalue_global)
+
     significant_edges = collect_significant_edges_kutsche(filtered_pairs,
-                                                                p_value_threshold=pvalue_global,
-                                                                file=True,
-                                                                filepath=filtered_pairs,
-                                                                starting_genes=genelist_global,
-                                                                higher_threshold_for_starting_genes=p_threshold)
+                                                           p_value_threshold=pvalue_global,
+                                                           file=True,
+                                                           filepath=filtered_pairs,
+                                                           starting_genes=genelist_global,
+                                                           higher_threshold_for_starting_genes=p_threshold)
     G = create_network(significant_edges)
 
-    gene_of_interest="ZEB2" 
-    for run in nruns:
-        consensus, coassoc, partitions, n_of_genes_in_interest_gene_community = consensus_partition(G, n_runs=run, gene_of_interest=gene_of_interest, plot=True)
-        partition = consensus
-        if n_of_genes_in_interest_gene_community is not None:
-            debug_log(f"There were {n_of_genes_in_interest_gene_community}/{len(partition)} unique genes in the community across {run} runs of Louvain in the same community as {gene_of_interest}")
+    # Initialize parameters
+    gene_of_interest = "ZEB2"
+    current_runs = 5000  # Start at 5000
+    increment = 1000     # Increase in steps of 1000
+    tolerance = 0.05      # 5% threshold for stability based on 90% quantile
+
+    # Initialize previous run results
+    previous_coassoc = None
+    previous_thresholds = None
+    previous_top_genes = set()
+
+    # Track previous runs for stability checks
+    previous_runs = set()
+
+    # Start stability search
+    while True:
+        if current_runs in previous_runs:
+            continue  # Skip if we've already computed for this run count
+
+        previous_runs.add(current_runs)  # Store the current run count
+        debug_log(f"\n🔄 Running Louvain clustering for {current_runs} runs...")
+
+        # Run Louvain clustering
+        consensus, coassoc, partitions, n_of_genes_in_interest_gene_community, nodes = consensus_partition(
+            G, n_runs=current_runs, gene_of_interest=gene_of_interest, plot=True
+        )
+
+        # Compute quantile thresholds
+        current_thresholds = compute_quantile_thresholds(coassoc, nodes)
+
+        # Save gene frequencies to CSV
+        save_gene_frequencies_to_csv(nodes, coassoc, gene_of_interest, current_runs)
+
+        # Identify top 5% genes (Ensure sorting is consistent)
+        num_top_genes = max(1, int(0.05 * len(nodes)))  # Ensure at least 1 gene
+        try:
+            gene_index = nodes.index(gene_of_interest)
+            current_top_genes = sorted(
+                [(gene, coassoc[gene_index, i]) for i, gene in enumerate(nodes)],
+                key=lambda x: x[1],
+                reverse=True
+            )[:num_top_genes]
+        except ValueError:
+            raise ValueError(f"Gene {gene_of_interest} not found in the network.")
+
+        # Extract only gene names (ignore frequencies)
+        current_top_genes_names = {gene for gene, _ in current_top_genes}
+
+        # If we have a previous run, compute stability based on 90% quantile relative differences
+        if previous_coassoc is not None:
+            # Compute relative differences
+            diff_matrix = np.abs(previous_coassoc - coassoc)
+            relative_diff = diff_matrix / np.clip(previous_coassoc, a_min=1e-9, a_max=None)  # Avoid division by zero
+            quantile_90_rel_diff = np.quantile(relative_diff, 0.90)
+
+            # Compute overlap of top 5% genes
+            overlapping_genes = previous_top_genes.intersection(current_top_genes_names)
+            overlap_percentage = len(overlapping_genes) / num_top_genes * 100  # Convert to percentage
+
+            # Log results
+            debug_log(f"📊 Run: {current_runs}")
+            debug_log(f"   - 90% Quantile of Relative Differences: {quantile_90_rel_diff:.6f} (Threshold: {tolerance})")
+            debug_log(f"   - Top 5% Genes Overlap: {overlap_percentage:.2f}% (Threshold: 95%)")
+            debug_log(f"   - Overlapping Genes ({len(overlapping_genes)}/{num_top_genes})")
+            #debug_log(f"   - Overlapping Genes ({len(overlapping_genes)}/{num_top_genes}): {sorted(overlapping_genes)}")
+
+            # Check stability criterion
+            if quantile_90_rel_diff <= tolerance and overlap_percentage >= 95:
+                debug_log(f"✅ Stability detected at {current_runs} runs.")
+                break  # Stop when we reach stability
+
+        # Store current results for next iteration
+        previous_coassoc = coassoc
+        previous_thresholds = current_thresholds
+        previous_top_genes = current_top_genes_names
+
+        # Increase run count by 1000
+        current_runs += increment
+        debug_log(f"🔼 Increasing runs to {current_runs}")

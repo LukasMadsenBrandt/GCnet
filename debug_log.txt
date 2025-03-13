@@ -1,4 +1,40 @@
-There were 121/1866 unique genes in the community across 2 runs of Louvain in the same community as ZEB2
-There were 150/1866 unique genes in the community across 3 runs of Louvain in the same community as ZEB2
-There were 214/1866 unique genes in the community across 4 runs of Louvain in the same community as ZEB2
-There were 233/1866 unique genes in the community across 5 runs of Louvain in the same community as ZEB2
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85): ['ADAM22', 'ADARB1', 'AGL', 'ALG3', 'ALOXE3', 'ANKRD17', 'APP', 'ARHGAP31', 'ARNT2', 'AUTS2', 'BAP1', 'BRD4', 'CC2D1A', 'CCND2', 'CDH15', 'CDK13', 'CEP135', 'CLCN2', 'CLCN3', 'COLGALT1', 'CPT2', 'CRLS1', 'CTNNB1', 'DEAF1', 'DEPDC5', 'DGCR2', 'DNAJC6', 'EFNB1', 'EHMT1', 'FANCA', 'GALNS', 'GATM', 'GCH1', 'GCLC', 'GRID2', 'GRIN1', 'GRM1', 'HCN4', 'HERC1', 'HPD', 'HSD17B4', 'KCNC3', 'KCNJ10', 'KMT2D', 'LCA5', 'LEPR', 'MAF', 'MANF', 'MARS2', 'MSX2', 'MVK', 'NDUFA8', 'NFIA', 'NOTCH3', 'NSUN3', 'PAK1', 'PCDH12', 'PCNA', 'PDP1', 'PHGDH', 'PIGU', 'PSMB1', 'RAB3GAP1', 'RGR', 'RIC1', 'RPL35', 'RPL8', 'SCN8A', 'SLC3A1', 'SMAD4', 'SMARCE1', 'SOX3', 'SPTBN1', 'SRCAP', 'STT3B', 'SYNGAP1', 'TKT', 'TMCO1', 'TMEM240', 'TNFSF11', 'TPR', 'VPS4A', 'YIF1B', 'ZEB2', 'ZSWIM7']
+🔼 Increasing runs to 70
+
+🔄 Running Louvain clustering for 70 runs...
+📊 Run: 70
+   - 90% Quantile of Relative Differences: 0.285714 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85): ['ADAM22', 'AGL', 'ALG3', 'ALOXE3', 'ANKRD17', 'APP', 'ARHGAP31', 'ARNT2', 'AUTS2', 'BRD4', 'CABP4', 'CC2D1A', 'CCND2', 'CDH15', 'CDK13', 'CEP135', 'CLCN2', 'CLCN3', 'COLGALT1', 'CPT2', 'CRLS1', 'CTNNB1', 'DALRD3', 'DEAF1', 'DGCR2', 'DNAJC6', 'EFNB1', 'EHMT1', 'FANCA', 'GALNS', 'GATM', 'GCH1', 'GCLC', 'GRID2', 'GRIN1', 'GRM1', 'HCN4', 'HERC1', 'HPD', 'HSD17B4', 'IHH', 'KCNC3', 'KCNJ10', 'KMT2D', 'LCA5', 'LEPR', 'MAF', 'MANF', 'MARS2', 'MSX2', 'MVK', 'NDUFA8', 'NOTCH3', 'NSUN3', 'PAK1', 'PCDH12', 'PDZD8', 'PHGDH', 'PSMB1', 'RAB3GAP1', 'RGR', 'RIC1', 'RP2', 'RPL35', 'RPL8', 'SCN8A', 'SLC3A1', 'SMAD4', 'SMARCE1', 'SOX3', 'SRCAP', 'STT3B', 'SYNGAP1', 'TKT', 'TMCO1', 'TMEM240', 'TNFSF11', 'TPR', 'TUBB3', 'VPS4A', 'VWA3B', 'YIF1B', 'ZEB2', 'ZNF423', 'ZSWIM7']
+🔼 Increasing runs to 80
+
+🔄 Running Louvain clustering for 80 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 70
+
+🔄 Running Louvain clustering for 70 runs...
+📊 Run: 70
+   - 90% Quantile of Relative Differences: 0.285714 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 80
+
+🔄 Running Louvain clustering for 80 runs...
