@@ -1,3 +1,4 @@
+import math
 from sklearn.cluster import AgglomerativeClustering
 from community import community_louvain
 import concurrent.futures
@@ -272,8 +273,8 @@ if __name__ == '__main__':
 
     # Initialize parameters
     gene_of_interest = "ZEB2"
-    current_runs = 5000  # Start at 5000
-    increment = 1000     # Increase in steps of 1000
+    current_runs = 50  # Start at 5000
+    increment = 0.2     # Increase in steps of 1000
     tolerance = 0.05      # 5% threshold for stability based on 90% quantile
 
     # Initialize previous run results
@@ -346,6 +347,9 @@ if __name__ == '__main__':
         previous_thresholds = current_thresholds
         previous_top_genes = current_top_genes_names
 
+        # Increase by 20%
+        current_runs += math.floor(int(current_runs*increment))
+
         # Increase run count by 1000
-        current_runs += increment
+        #current_runs += increment
         debug_log(f"🔼 Increasing runs to {current_runs}")

@@ -162,5 +162,5 @@ __pycache__/
 *.pyc
 cache/
 plots/
-granger_causality_results.csv
-granger_causality_results*
+*.csv
+

@@ -1,4 +1,7 @@
+import itertools
+import multiprocessing
 import os
+import sys
 #Kutsche
 from gene_analysis_kutsche.granger_causality import perform_granger_causality_tests as perform_gc_kutsche
 from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
@@ -28,7 +31,8 @@ def main():
         print("Data filtered.")
         #print 5 lines of the data
         print(df_filtered.head())
-        gc_results = perform_gc_kutsche(df_filtered, progress=True)
+        #gc_results = perform_gc_kutsche(df_filtered, progress=True)
+        gc_results = perform_granger_explore_new(df_filtered, progress=True)
         print("Granger causality tests performed.")
 
         # Save results
@@ -51,6 +55,60 @@ def main():
 
         save_results_to_csv_kutsche(gc_results, "granger_causality_results_benito.csv")
         print("granger_causality_results_benito.csv")
+
+
+def perform_granger_explore_new(df_filtered_wt_weighted_mean, progress=False):
+    """
+    Perform Granger causality tests on all pairs of genes.
+    """
+    time_series_data = df_filtered_wt_weighted_mean.T  # To make each column a timeseries
+    filepath = os.path.join('Data', 'Kutsche', 'top_5%_stable_comm_ZEB2.txt')
+    
+    with open(filepath, 'r') as file:
+        # Read gene names directly, one per line
+        genes_of_interest = [line.strip() for line in file if line.strip()]
+    
+    genes = df_filtered_wt_weighted_mean.index.tolist()
+
+    # Generate pairs involving genes_of_interest (no self-pairs)
+    gene_combinations = [
+        (goi, gene) for goi in genes_of_interest for gene in genes if goi != gene
+    ] + [
+        (gene, goi) for goi in genes_of_interest for gene in genes if goi != gene
+    ]
+    total_combinations = len(gene_combinations)
+    print(f"number of genes{len(genes)}")
+    print(f"number of combinations{total_combinations}")
+
+    gc_results = {}
+
+
+
+    return gc_results
+
+def update_progress_bar(total_combinations, progress_queue):
+    processed_combinations = 0
+    while processed_combinations < total_combinations:
+        processed_combinations += progress_queue.get()
+        percent_complete = (processed_combinations / total_combinations) * 100
+        sys.stdout.write(f"\rProgress: {processed_combinations}/{total_combinations} gene pairs processed ({percent_complete:.2f}%)")
+        sys.stdout.flush()
+    print()
+
+from statsmodels.tsa.stattools import grangercausalitytests
+def process_gene_combination(combination, time_series_data, progress_queue):
+    gene1, gene2 = combination
+    test_data = time_series_data[[gene2, gene1]]  # gene 1 causes gene 2
+    try:
+        if test_data.std(axis=0).eq(0).any():
+            result = combination, {'error': 'constant data'}
+        else:
+            result = combination, grangercausalitytests(test_data, maxlag=1, verbose=False)
+    except Exception as e:  # Replace InfeasibleTestError with generic Exception
+        result = combination, {'error': str(e)}
+    if progress_queue is not None:
+        progress_queue.put(1)
+    return result
 
 if __name__ == '__main__':
     abspath = os.path.abspath(__file__)
