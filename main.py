@@ -25,7 +25,7 @@ def main():
     if kutsche:            
         # Load and preprocess data
         print("Loading and preprocessing data...")
-        df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'genes_all.txt'))
+        df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'Kutsche_Counts.txt'))
         print("Data loaded and preprocessed.")
         df_filtered, raw_data, day_map = filter_proximity_kutsche(df)
         print("Data filtered.")
@@ -77,12 +77,31 @@ def perform_granger_explore_new(df_filtered_wt_weighted_mean, progress=False):
         (gene, goi) for goi in genes_of_interest for gene in genes if goi != gene
     ]
     total_combinations = len(gene_combinations)
-    print(f"number of genes{len(genes)}")
-    print(f"number of combinations{total_combinations}")
+    print(f"Number of genes {len(genes)}")
+    print(f"Number of combinations {total_combinations}")
 
     gc_results = {}
 
+    with multiprocessing.Manager() as manager:
+        progress_queue = manager.Queue() if progress else None
 
+        with multiprocessing.Pool() as pool:
+            if progress:
+                progress_updater = multiprocessing.Process(target=update_progress_bar, args=(total_combinations, progress_queue))
+                progress_updater.start()
+            
+            results = pool.starmap(
+                process_gene_combination,
+                [(combination, time_series_data, progress_queue) for combination in gene_combinations]
+            )
+
+            for result in results:
+                if result:
+                    gc_results[result[0]] = result[1]
+
+            if progress:
+                progress_queue.put(total_combinations)  # Ensure progress updater finishes
+                progress_updater.join()
 
     return gc_results
 
