@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # The file with gene names
-gene_list="unique_genes.txt"
+gene_list="top_5%_stable_comm_ZEB2.txt"
 
 # The file to search through
 data_file="Kutsche_Counts.txt"
 
 # The file to append results to
-output_file="genes_all.txt"
+output_file="genes_94.txt"
 
 declare -a ARRAY
 

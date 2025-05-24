@@ -1,6 +1,5 @@
+import numpy as np
 import pandas as pd
-from scipy.stats import trim_mean
-
 
 def filter_data_srr(data):
     """
@@ -15,8 +14,12 @@ def filter_data_srr(data):
     # Sort the columns by day
     ordered_columns = sorted(data_cols, key=lambda x: day_map[x])
     data_filtered = data[ordered_columns]
+
+    # Remove all columns with only zeros
+    data_filtered = data_filtered.loc[(data_filtered[data_cols] != 0).any(axis=1)]
+
     
-    return data_filtered, day_map
+    return log_transform_data(data_filtered), day_map
 
 def filter_data_proximity_based_weights(data):
     """
@@ -77,4 +80,10 @@ def filter_data_median(data):
         median_per_day[day] = daily_data.median(axis=1)
 
     df_median_per_day = pd.DataFrame(median_per_day)
-    return df_median_per_day, data_filtered, day_map
+
+    log_df_median_per_day = log_transform_data(df_median_per_day)
+
+    return log_df_median_per_day, data_filtered, day_map
+
+def log_transform_data(df_selected):
+    return df_selected.apply(np.log)

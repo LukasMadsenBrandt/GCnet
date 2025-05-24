@@ -44,9 +44,6 @@ def perform_granger_causality_tests(df_filtered_wt_weighted_mean, genes_file='ge
     """
     time_series_data = df_filtered_wt_weighted_mean.T  # To make each column a timeseries
 
-    # Remove all columns with only zeros
-    time_series_data = time_series_data.loc[:, (time_series_data != 0).any(axis=0)]
-
     # Read the list of specific genes from the file
     with open(genes_file, 'r') as file:
         genes = [line.strip() for line in file.readlines()]

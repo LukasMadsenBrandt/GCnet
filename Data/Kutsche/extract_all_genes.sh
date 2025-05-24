@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # The file to extract genes from
-data_file="Kutsche_Counts.txt"
+data_file="genes_all.txt"
 
 # The output file containing unique genes
-output_file="kutsche_all_genes.txt"
+output_file="2311_genes.txt"
 
 # Check if data file exists
 if [ ! -f "$data_file" ]; then

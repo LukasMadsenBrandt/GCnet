@@ -1,5 +1,6 @@
+import numpy as np
 from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data as load_and_preprocess_kutsche
-from gene_analysis_kutsche.data_filtering import filter_data_proximity_based_weights as filter_proximity_kutsche
+from gene_analysis_kutsche.data_filtering import preprocess_pipeline as preprocess_pipeline
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
@@ -11,14 +12,15 @@ from statsmodels.tsa.api import VAR
 
 # Load and filter data
 df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'genes_all.txt'))
-df_human, raw_data, day_map = filter_proximity_kutsche(df)
+df_human, raw_data, day_map = preprocess_pipeline(df, logged=False)
+
 
 # Initialize the Dash app
 app = dash.Dash(__name__)
 
 # Define the layout of the app
-app.layout = html.Div(style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'width': '100vw', 'height': '100vh'}, children=[
-    html.H1("Gene Expression Plotter", style={'textAlign': 'center', 'marginTop': '20px'}),
+app.layout = html.Div(style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'width': '100vw', 'height': '100vh', 'fontSize': '120%'}, children=[
+    html.H1("Gene Expression Plotter", style={'textAlign': 'center', 'marginTop': '20px', 'fontSize': '200%'}),
 
     # Dropdown for gene selection
     dcc.Dropdown(
@@ -26,38 +28,34 @@ app.layout = html.Div(style={'display': 'flex', 'flexDirection': 'column', 'alig
         options=[{'label': gene, 'value': gene} for gene in df_human.index],
         multi=True,  # Allows multiple selection
         placeholder="Select genes to plot",
-        style={'width': '50%', 'marginBottom': '20px'}
+        style={'width': '50%', 'marginBottom': '20px', 'fontSize': '120%'}
     ),
 
     # Toggle normalization
-    html.Button("Normalize (VAR Model)", id="normalize-btn", n_clicks=0, style={'marginBottom': '20px'}),
-    html.Div(id='normalization-status', style={'marginBottom': '20px'}),
+    html.Button("Log Transform", id="log-transform-btn", n_clicks=0, style={'marginBottom': '20px', 'fontSize': '120%'}),
+    html.Div(id='log-transform-status', style={'marginBottom': '20px', 'fontSize': '120%'}),
 
     # Graph display
-    dcc.Graph(id='gene-plot', style={'flexGrow': 1, 'width': '90vw'}),
+    dcc.Graph(id='gene-plot', style={'flexGrow': 1, 'width': '90vw', 'height': '600px'}),
 
     # Buttons for downloading the plot
     html.Div(style={'display': 'flex', 'justifyContent': 'center', 'marginTop': '20px'}, children=[
-        html.Button("Download as HTML", id="download-html-btn", style={'marginRight': '10px'}),
+        html.Button("Download as HTML", id="download-html-btn", style={'marginRight': '10px', 'fontSize': '120%'}),
         dcc.Download(id="download-html"),
         
-        html.Button("Download as SVG", id="download-svg-btn", style={'marginLeft': '10px'}),
+        html.Button("Download as SVG", id="download-svg-btn", style={'marginLeft': '10px', 'fontSize': '120%'}),
         dcc.Download(id="download-svg")
     ])
 ])
-
-def normalize_data(df_selected):
-    model = VAR(df_selected.T)  # Transpose because VAR expects time-series data in columns
-    results = model.fit(maxlags=1)  # Fit with lag order 1 for simplicity
-    normalized_data = results.fittedvalues.T  # Transpose back after fitting
-    return normalized_data
+def log_transform_data(df_selected):
+    return df_selected.apply(np.log)
 
 @app.callback(
     [Output('gene-plot', 'figure'),
-     Output('normalization-status', 'children')],
+     Output('log-transform-status', 'children')],
     [Input('gene-selector', 'value'),
-     Input('normalize-btn', 'n_clicks')],
-    [State('normalize-btn', 'n_clicks_timestamp')]
+     Input('log-transform-btn', 'n_clicks')],
+    [State('log-transform-btn', 'n_clicks_timestamp')]
 )
 def update_plot(selected_genes, n_clicks, n_clicks_timestamp):
     if not selected_genes:
@@ -65,34 +63,37 @@ def update_plot(selected_genes, n_clicks, n_clicks_timestamp):
 
     fig = go.Figure()
     x_values = df_human.columns.astype(int)
-    is_normalized = n_clicks % 2 == 1  # Normalize if the button has been clicked an odd number of times
+    log_transformed = n_clicks % 2 == 1  # Log transform if the button has been clicked an odd number of times
 
     # Extract selected gene data
     df_selected = df_human.loc[selected_genes]
 
-    if is_normalized:
-        normalized_data = normalize_data(df_selected)
-        normalization_status = "Data normalized using VAR model"
+    if log_transformed:
+        log_transformed_data = log_transform_data(df_selected)
+        log_transform_status = "Data log transformed"
     else:
-        normalized_data = df_selected
-        normalization_status = "Data is not normalized"
+        log_transformed_data = df_selected
+        log_transform_status = "Data is not log transformed"
 
-    # Plot the (normalized or raw) data
-    for gene, y_values in normalized_data.iterrows():
+    # Plot the (log transformed or raw) data
+    for gene, y_values in log_transformed_data.iterrows():
         fig.add_trace(go.Scatter(x=x_values, y=y_values.values, mode='lines+markers', name=gene))
 
     # Apply a consistent layout every time the figure is updated
+    yaxis_title = "Log Expression Level" if log_transformed else "Expression Level"
     fig.update_layout(
         title="Gene Expression Over Time",
         xaxis_title="Time (days)",
-        yaxis_title="Expression Level",
+        xaxis_type="category",
+        yaxis_title=yaxis_title,
         template="plotly_white",
         margin={'l': 40, 'r': 40, 't': 40, 'b': 40},  # Adjust margins for a cleaner look
         height=600,  # Set a fixed height for better appearance
-        showlegend=True  # Ensure legend is always shown
+        showlegend=True,  # Ensure legend is always shown
+        font={'size': 16}  # Increase font size for better readability
     )
 
-    return fig, normalization_status
+    return fig, log_transform_status
 
 @app.callback(
     Output("download-html", "data"),
@@ -122,3 +123,4 @@ def download_svg(n_clicks, figure):
 # Run the app
 if __name__ == '__main__':
     app.run_server(debug=True)
+

@@ -50,7 +50,9 @@ from gene_analysis_kutsche.data_filtering import filter_data_proximity_based_wei
 from gene_analysis_kutsche.data_filtering import filter_data_arithmetic_mean as filter_mean_kutsche
 from gene_analysis_kutsche.data_filtering import filter_data_median as filter_median_kutsche
 
-warnings.filterwarnings("ignore", message="'linear' x-axis tick spacing not even")
+#warnings.filterwarnings("ignore", message="'linear' x-axis tick spacing not even")
+warnings.filterwarnings("ignore")
+
 
 # Config
 pvalue_global = 0.0004
@@ -130,6 +132,9 @@ def create_network(significant_edges):
             (source, lag), (target, _), kutsche_p_value, benito_p_value = edge
             avg_p_value = (kutsche_p_value + benito_p_value) / 2
             G.add_edge(source, target, lag=lag, kutsche_p_value=kutsche_p_value, benito_p_value=benito_p_value, p_value=avg_p_value)
+        else:
+            debug_print(f"Something went wrong with edge: {edge}")
+            raise ValueError("Invalid edge format")
     return G
 
 
@@ -277,7 +282,7 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
     Returns:
         fig (plotly.graph_objects.Figure): The interactive figure.
     """
-    gene_of_interest = "RPL8"
+    gene_of_interest = "ZEB2"
     # Find the index of the gene of interest in the nodes list.
     try:
         idx = nodes.index(gene_of_interest)
@@ -695,6 +700,7 @@ app.layout = html.Div([
                 {'label': '47-Benito-Kwiecinski', 'value': 'benito'},
                 {'label': '47-Kutsche', 'value': 'kutsche'},
                 {'label': 'Kutsche', 'value': 'large_kutsche' },
+                {'label': 'Kutsche Top 5%', 'value': 'large_kutsche_top5%' },
                 {'label': 'Benito Human', 'value': 'large_benito_human' },
                 {'label': 'Benito Gorilla', 'value': 'large_benito_gorilla' },
                 {'label': 'Intersection', 'value': 'intersection'}
@@ -1032,6 +1038,18 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
         not_needed = None # Placeholder, as we read this from the file
         filtered_pairs = filter_gene_pairs_kutsche(filepath = "granger_causality_results.csv", p_threshold=pvalue_global, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
         significant_edges = collect_significant_edges_kutsche(filtered_pairs, p_value_threshold=pvalue_global, file=True, filepath = filtered_pairs, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
+    elif dataset == 'large_kutsche_top5%':
+        filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_top5%.csv",
+                                                   p_threshold=pvalue_global,
+                                                   starting_genes=genelist_global,
+                                                   higher_threshold_for_starting_genes=pvalue_global)
+        significant_edges = collect_significant_edges_kutsche(filtered_pairs,
+                                                              p_value_threshold=pvalue_global,
+                                                              file=True,
+                                                              filepath=filtered_pairs,
+                                                              starting_genes=genelist_global,
+                                                              higher_threshold_for_starting_genes = pvalue_global)
+    
     elif dataset == 'large_benito_human':
         not_needed = None # Placeholder, as we read this from the file
         filtered_pairs = filter_gene_pairs_benito(filepath = "granger_causality_results_benito_Human.csv", p_threshold=pvalue_global, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
@@ -1113,6 +1131,17 @@ def compute_heavy_network(apply_click,
                                                               filepath=filtered_pairs,
                                                               starting_genes=genelist_global,
                                                               higher_threshold_for_starting_genes=p_threshold)
+    elif dataset == 'large_kutsche_top5%':
+        filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_top5_3611.csv",
+                                                   p_threshold=pvalue_global,
+                                                   starting_genes=genelist_global,
+                                                   higher_threshold_for_starting_genes=pvalue_global)
+        significant_edges = collect_significant_edges_kutsche(filtered_pairs,
+                                                              p_value_threshold=pvalue_global,
+                                                              file=True,
+                                                              filepath=filtered_pairs,
+                                                              starting_genes=genelist_global,
+                                                              higher_threshold_for_starting_genes=p_threshold)
     elif dataset == 'large_benito_human':
         filtered_pairs = filter_gene_pairs_benito(filepath="granger_causality_results_benito_Human.csv",
                                                   p_threshold=pvalue_global,
@@ -1137,13 +1166,21 @@ def compute_heavy_network(apply_click,
                                                              higher_threshold_for_starting_genes=p_threshold)
     else:
         significant_edges = []
-    debug_print(f"Significant edges: {significant_edges[:10]}")
+
 
     if not significant_edges:
         return None
-
+    #debug_print(f"Significant edges: {len(significant_edges)}")
+    significant_edges = set(significant_edges)
+    #debug_print(f"Significant edges: {len(significant_edges)}")
     G = create_network(significant_edges)
     
+    debug_print(f"Genes{ len(G.nodes)}")
+    debug_print(f"Edges: {len(G.edges)}")
+
+    # Save the gene names to a file
+    genes_names(G)
+
     # Run community detection (you may choose consensus or another method)
     if community_detection_method == 'consensus':
         consensus, coassoc, partitions, n_of_genes_in_interest_gene_community = consensus_partition(G, n_runs=num_consensus_runs, gene_of_interest="ZEB2")
@@ -1169,6 +1206,19 @@ def compute_heavy_network(apply_click,
     except Exception as e:
         debug_print("Error in heavy callback:", e)
         raise PreventUpdate
+
+# Export genes to /n seperated file
+def genes_names(network):
+    # Get the gene names from the network
+    gene_names = []
+    with open('genes.txt', 'w') as f:
+        for node in network.nodes():
+            if isinstance(node, tuple):
+                gene_names.append(node[0])
+            else:
+                gene_names.append(node)
+        f.write('\n'.join(gene_names))
+
 
 @app.callback(
     [Output('network-graph', 'srcDoc'),
@@ -1219,7 +1269,12 @@ def update_graph(heavy_data, apply_comm_clicks, selected_communities, layout, se
     dot = create_graphviz_dot(G_filtered, partition, community_colors, highlight_node=search_value, layout=layout)
 
     try:
-        graph_svg = dot.pipe(format='svg').decode('utf-8')
+        # REMOVE WARNINGS FROM GRAPHWIZ
+        import contextlib
+        with open(os.devnull, 'w') as fnull:
+            with contextlib.redirect_stderr(fnull):
+                graph_svg = dot.pipe(format='svg').decode('utf-8')
+
         graph_html = html_template.format(graph=graph_svg)
         return graph_html, "", community_options, selected_communities, len(available_communities)
     except Exception as e:
@@ -1235,7 +1290,7 @@ def update_graph(heavy_data, apply_comm_clicks, selected_communities, layout, se
      State('toggle-state', 'data')],
     prevent_initial_call=True
 )
-def toggle_all_communities_callback(n_clicks, community_options, selected_communities, toggle_state):
+def toggle_all_communities_callback(n_clicks, community_options, selected_communities, toggle_state):#
     if n_clicks is None:
         return selected_communities, toggle_state
 
@@ -1296,103 +1351,62 @@ def create_combined_plot(figures, gene_names, title):
 
     return subplot_fig
 
-
 @app.callback(
     Output('expression-plots', 'children'),
-    [Input('show-plots-button', 'n_clicks')],
-    [State('search-bar', 'value'),
-     State('dataset-dropdown', 'value'),
-     State('summarization-technique-dropdown', 'value'),
-     State('p-threshold-slider', 'value'),
-     State('df-store', 'data'),  # Retrieve the DataFrame from store
-     State('current-dataset', 'data'),
-     State('current-summarization-technique', 'data')]
+    [Input('search-bar', 'value'),
+     Input('dataset-dropdown', 'value'),
+     Input('summarization-technique-dropdown', 'value'),
+     Input('p-threshold-slider', 'value'),
+     Input('heavy-network-store', 'data')]
 )
-def show_expression_plots(n_clicks, search_gene, dataset, summarization_technique, p_threshold, df_store, current_dataset, current_summarization_technique):
+def show_expression_plots(search_gene, dataset, summarization_technique, p_threshold, heavy_network):
     debug_print("Debug: Entered show_expression_plots")
-    if n_clicks is None or not search_gene:
-        debug_print("Debug: No clicks or no search gene provided")
+    if not search_gene:
+        debug_print("Debug: No search gene provided")
         return ""
-    
-    if dataset != current_dataset or summarization_technique != current_summarization_technique:
-        return "Please press 'Send' after selecting a new dataset or summarization technique."
-
 
     if not dataset or not summarization_technique:
         debug_print("Debug: Dataset or summarization technique not selected")
         return "Please select both dataset and summarization technique."
 
-    global benito_data, kutsche_data
+    if not heavy_network:
+        debug_print("Debug: No heavy network available")
+        return "Please press 'Apply' to generate the graph."
 
-    if dataset == 'intersection':
-        debug_print("Debug: Intersection dataset selected, not supported")
-        return "Expression plots for intersection dataset are not supported."
+    try:
+        graph_pickle_bytes = base64.b64decode(heavy_network['graph_pickle'])
+        G = pickle.loads(graph_pickle_bytes)
+    except Exception as e:
+        debug_print(f"Error loading graph data: {e}")
+        return "Error loading graph data."
 
-    # Convert the stored data back to DataFrame
-    df = pd.DataFrame(df_store)
-
-    data_dict = benito_data if dataset == 'benito' else kutsche_data
-    data = data_dict.get(summarization_technique)
-
-    if data is None:
-        debug_print(f"Debug: No data available for {dataset} and {summarization_technique}")
-        return f"No data available for the selected dataset ({dataset}) and summarization technique ({summarization_technique})."
-
-    # Retrieve the significant edges
-    if dataset == 'benito':
-        significant_edges = collect_significant_edges_benito(data, p_value_threshold=pvalue_global)
-    elif dataset == 'kutsche':
-        significant_edges = collect_significant_edges_kutsche(data, p_value_threshold=pvalue_global)
-    elif dataset == 'large_kutsche':
-        not_needed = None # Placeholder, as we read this from the file
-        filtered_pairs = filter_gene_pairs_kutsche(filepath = "granger_causality_results.csv", p_threshold=p_threshold, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
-        significant_edges = collect_significant_edges_kutsche(filtered_pairs, p_value_threshold=p_threshold, file=True, filepath = filtered_pairs, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
-    elif dataset == 'large_benito_human':
-        not_needed = None # Placeholder, as we read this from the file
-        filtered_pairs = filter_gene_pairs_benito(filepath = "granger_causality_results_benito_Human.csv", p_threshold=p_threshold, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
-        significant_edges = collect_significant_edges_benito(filtered_pairs, p_value_threshold=p_threshold, file=True, filepath = filtered_pairs, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
-    elif dataset == 'large_benito_gorilla':
-        not_needed = None # Placeholder, as we read this from the file
-        filtered_pairs = filter_gene_pairs_benito(filepath = "granger_causality_results_benito_Gorilla.csv", p_threshold=p_threshold, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
-        significant_edges = collect_significant_edges_benito(filtered_pairs, p_value_threshold=p_threshold, file=True, filepath = filtered_pairs, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
-
-    else:
-        significant_edges = []  # or any default value you prefer
-    debug_print(f"Debug: Retrieved {len(significant_edges)} significant edges")
-
-    # Find genes influenced by the searched gene
-    influenced_genes = [edge[1][0] for edge in significant_edges if edge[0][0] == search_gene]
-    debug_print(f"Debug: Influenced genes - {influenced_genes}")
+    influenced_genes = [target for source, target, data in G.edges(data=True) if source == search_gene]
 
     if not influenced_genes:
         debug_print(f"Debug: No genes influenced by {search_gene}")
         return f"No genes influenced by {search_gene} found."
 
-    # Retrieve and plot expression data for the searched gene and influenced genes
     figures = []
-    gene_names = []
-    
-    _, fig = plot_gene_expression(df.loc[[search_gene]], print_data=True)
-    figures.append(fig)
-    gene_names.append(search_gene)
-    
-    for gene in influenced_genes:
-        _, fig = plot_gene_expression(df.loc[[gene]], print_data=True)
-        figures.append(fig)
-        gene_names.append(gene)
+    gene_names = [search_gene] + influenced_genes
 
-    debug_print("Debug: Figures generated", figures)
+    for gene in gene_names:
+        try:
+            df_human = heavy_network['df_human'].loc[[gene]]
+            fig = plot_gene_expression(df_human, print_data=True)
+            figures.append(fig)
+        except KeyError:
+            debug_print(f"Debug: Gene {gene} data not found in DataFrame.")
 
-    # Create combined plot
-    title = f"Gene Expression Plots for {search_gene} and the genes it may Granger Cause, with P-value Threshold: {p_threshold}, Dataset: {dataset}, and Summarization Technique: {summarization_technique}"
+    if not figures:
+        debug_print("Debug: No figures generated")
+        return "No plots to display."
+
+    title = (f"Gene Expression Plots for {search_gene} and influenced genes, "
+             f"P-value Threshold: {p_threshold}, Dataset: {dataset}, "
+             f"Summarization Technique: {summarization_technique}")
     combined_plot = create_combined_plot(figures, gene_names, title)
     debug_print("Debug: Combined plot created")
 
-    if not combined_plot:
-        debug_print("Debug: Combined plot is empty")
-        return "No plots to display."
-
-    pio.write_html(combined_plot, os.path.join('plots',f'{dataset}_{search_gene}_{summarization_technique}_{p_threshold}.html'), auto_open=True)
     return dcc.Graph(figure=combined_plot)
 
 def plot_gene_expression(df_human, print_data=False):
@@ -1488,6 +1502,17 @@ def update_show_plots_button(search_value, dataset, summarization_technique, p_t
         not_needed = None # Placeholder, as we read this from the file
         filtered_pairs = filter_gene_pairs_kutsche(filepath = "granger_causality_results.csv", p_threshold=p_threshold, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
         significant_edges = collect_significant_edges_kutsche(filtered_pairs, p_value_threshold=p_threshold, file=True, filepath = filtered_pairs, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
+    elif dataset == 'large_kutsche_top5%':
+        filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_top5%.csv",
+                                                   p_threshold=pvalue_global,
+                                                   starting_genes=genelist_global,
+                                                   higher_threshold_for_starting_genes=pvalue_global)
+        significant_edges = collect_significant_edges_kutsche(filtered_pairs,
+                                                              p_value_threshold=pvalue_global,
+                                                              file=True,
+                                                              filepath=filtered_pairs,
+                                                              starting_genes=genelist_global,
+                                                              higher_threshold_for_starting_genes=p_threshold)
     elif dataset == 'large_benito_human':
         not_needed = None # Placeholder, as we read this from the file
         filtered_pairs = filter_gene_pairs_benito(filepath = "granger_causality_results_benito_Human.csv", p_threshold=p_threshold, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)

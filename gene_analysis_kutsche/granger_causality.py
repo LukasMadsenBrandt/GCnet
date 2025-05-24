@@ -1,4 +1,5 @@
 import itertools
+import math
 import os
 import shutil
 import sys
@@ -110,24 +111,42 @@ def collect_significant_edges(gc_results, p_value_threshold=0.05, file=False, fi
                 
                 if p_value <= p_value_threshold or ((gene1 in starting_genes or gene2 in starting_genes) and p_value <= higher_threshold_for_starting_genes):
                     significant_edges.append(((gene1, lag), (gene2, 0), p_value))
-                    
     return significant_edges
 
 
 def save_results_to_csv(gc_results, output_file):
-    # Save the results to a csv, #gene1, gene2, lag, p-value
-    with open(output_file, 'w') as f:
-        f.write('gene1,gene2,lag,p-value\n')
-        for (gene1, gene2), results in gc_results.items():
-            if 'error' in results or not results:
-                f.write(f"{gene1},{gene2},NaN,NaN\n")
-                continue
-            for lag, result in results.items():
-                if 'ssr_ftest' in result[0]:
-                    p_value = result[0]['ssr_ftest'][1]  # Get the p-value of the F-test at this lag
-                    f.write(f"{gene1},{gene2},{lag},{p_value}\n")
-                else:
-                    f.write(f"{gene1},{gene2},{lag},NaN\n")
+    """
+    Save Granger causality test results to a CSV file with headers:
+    gene1, gene2, lag, p-value
+
+    Parameters:
+    gc_results (dict): Dictionary with keys as (gene1, gene2) tuples and values as results.
+    output_file (str): Path to the output CSV file.
+    """
+    try:
+        with open(output_file, mode='w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['gene1', 'gene2', 'lag', 'p-value'])
+
+            for (gene1, gene2), results in gc_results.items():
+                try:
+                    if not results or 'error' in results:
+                        writer.writerow([gene1, gene2, 'NaN', 'NaN'])
+                        continue
+
+                    for lag, result in results.items():
+                        ssr_ftest = result[0].get('ssr_ftest')
+                        if ssr_ftest and len(ssr_ftest) > 1:
+                            p_value = round(ssr_ftest[1], 4)  # Round p-value to 4 decimal places
+                            writer.writerow([gene1, gene2, lag, p_value])
+                        else:
+                            writer.writerow([gene1, gene2, lag, 'NaN'])
+                except Exception as line_error:
+                    print(f"Error writing results for {gene1}, {gene2}: {line_error}")
+    except Exception as e:
+        print(f"Failed to write to file {output_file}: {e}")
+    else:
+        print(f"Results successfully saved to {output_file}")
 
 
 

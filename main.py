@@ -2,14 +2,16 @@ import itertools
 import multiprocessing
 import os
 import sys
+
+import numpy as np
 #Kutsche
 from gene_analysis_kutsche.granger_causality import perform_granger_causality_tests as perform_gc_kutsche
 from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
 from gene_analysis_kutsche.granger_causality import save_results_to_csv as save_results_to_csv_kutsche
 from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data as load_and_preprocess_kutsche
-from gene_analysis_kutsche.data_filtering import filter_data_proximity_based_weights as filter_proximity_kutsche
-from gene_analysis_kutsche.data_filtering import filter_data_arithmetic_mean as filter_mean_kutsche
-from gene_analysis_kutsche.data_filtering import filter_data_median as filter_median_kutsche
+from gene_analysis_kutsche.data_filtering import preprocess_pipeline as preprocess_pipeline
+
+
 from gene_analysis_kutsche.data_filtering import filter_data_wt as filter_wt_kutsche
 
 #Benito
@@ -21,23 +23,25 @@ from gene_analysis_benito.data_preprocessing import filter_data_median as filter
 from gene_analysis_benito.data_filtering import filter_data as mapper_benito
 
 def main():
-    kutsche = True
+    kutsche = True # Set to True for Kutsche data, False for Benito data
     if kutsche:            
         # Load and preprocess data
         print("Loading and preprocessing data...")
-        df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'Kutsche_Counts.txt'))
+        df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'genes.txt'))
+
         print("Data loaded and preprocessed.")
-        df_filtered, raw_data, day_map = filter_proximity_kutsche(df)
+        df_filtered, raw_data, day_map = preprocess_pipeline(df, normalize="deseq", logged=True, aggregation="robust")
         print("Data filtered.")
+        print(df_filtered[:5])
         #print 5 lines of the data
-        print(df_filtered.head())
+        print(len(df_filtered))
         #gc_results = perform_gc_kutsche(df_filtered, progress=True)
-        gc_results = perform_granger_explore_new(df_filtered, progress=True)
+        #gc_results = perform_granger_explore_new(df_filtered, progress=True)
         print("Granger causality tests performed.")
 
         # Save results
-        save_results_to_csv_kutsche(gc_results, "granger_causality_results_2.csv")
-        print("Results saved to granger_causality_results_2.csv")
+        #save_results_to_csv_kutsche(gc_results, "granger_causality_results_test.csv")
+        print("Results saved to granger_causality_results_test.csv")
     else:
         df_human = mapper_benito(
             datafile=os.path.join('Data', 'Benito', 'Benito_Human'),
@@ -47,14 +51,12 @@ def main():
         print("Data loaded and preprocessed.")
         filter_function, _, _ = filter_proximity_benito(df_human)
         print("Data filtered.")
-        data_human = filter_function.loc[(filter_function != 0).any(axis=1)]
-        print(data_human.head())
         print("Performing Granger causality tests...")
-        gc_results = perform_gc_benito(data_human, genes_file=os.path.join('Data', 'Benito', 'gene_names_all.txt'), progress=True)
+        gc_results = perform_gc_benito(filter_function, genes_file=os.path.join('Data', 'Benito', 'gene_names_all.txt'), progress=True)
         print("Granger causality tests performed.")
 
-        save_results_to_csv_kutsche(gc_results, "granger_causality_results_benito.csv")
-        print("granger_causality_results_benito.csv")
+        save_results_to_csv_kutsche(gc_results, "granger_causality_results_benito2.csv")
+        
 
 
 def perform_granger_explore_new(df_filtered_wt_weighted_mean, progress=False):
@@ -79,6 +81,9 @@ def perform_granger_explore_new(df_filtered_wt_weighted_mean, progress=False):
     total_combinations = len(gene_combinations)
     print(f"Number of genes {len(genes)}")
     print(f"Number of combinations {total_combinations}")
+
+    # Limit to top 10 combinations for testing
+    gene_combinations = gene_combinations[:10]
 
     gc_results = {}
 
@@ -134,3 +139,5 @@ if __name__ == '__main__':
     dname = os.path.dirname(abspath)
     os.chdir(dname)
     main()
+
+

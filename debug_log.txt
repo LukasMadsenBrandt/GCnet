@@ -65,3 +65,9 @@ Starting stability check for ['ZEB2']
 🔼 Increasing runs to 86
 
 🔄 Running Louvain clustering for 86 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
