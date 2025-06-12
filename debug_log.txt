@@ -71,3 +71,195 @@ Starting stability check for ['ZEB2']
 🔼 Increasing runs to 60
 
 🔄 Running Louvain clustering for 60 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 72
+
+🔄 Running Louvain clustering for 72 runs...
+📊 Run: 72
+   - 90% Quantile of Relative Differences: 0.388889 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 86
+
+🔄 Running Louvain clustering for 86 runs...
+📊 Run: 86
+   - 90% Quantile of Relative Differences: 0.395349 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 103
+
+🔄 Running Louvain clustering for 103 runs...
+📊 Run: 103
+   - 90% Quantile of Relative Differences: 0.461165 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 94.62% (Threshold: 95%)
+   - Overlapping Genes (88/93)
+🔼 Increasing runs to 123
+
+🔄 Running Louvain clustering for 123 runs...
+📊 Run: 123
+   - 90% Quantile of Relative Differences: 0.395664 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 92.47% (Threshold: 95%)
+   - Overlapping Genes (86/93)
+🔼 Increasing runs to 147
+
+🔄 Running Louvain clustering for 147 runs...
+📊 Run: 147
+   - 90% Quantile of Relative Differences: 0.506122 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 95.70% (Threshold: 95%)
+   - Overlapping Genes (89/93)
+🔼 Increasing runs to 176
+
+🔄 Running Louvain clustering for 176 runs...
+📊 Run: 176
+   - 90% Quantile of Relative Differences: 0.392045 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 100.00% (Threshold: 95%)
+   - Overlapping Genes (93/93)
+🔼 Increasing runs to 211
+
+🔄 Running Louvain clustering for 211 runs...
+📊 Run: 211
+   - 90% Quantile of Relative Differences: 0.390205 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 95.70% (Threshold: 95%)
+   - Overlapping Genes (89/93)
+🔼 Increasing runs to 253
+
+🔄 Running Louvain clustering for 253 runs...
+📊 Run: 253
+   - 90% Quantile of Relative Differences: 0.389987 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 97.85% (Threshold: 95%)
+   - Overlapping Genes (91/93)
+🔼 Increasing runs to 303
+
+🔄 Running Louvain clustering for 303 runs...
+📊 Run: 303
+   - 90% Quantile of Relative Differences: 0.391639 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 96.77% (Threshold: 95%)
+   - Overlapping Genes (90/93)
+🔼 Increasing runs to 363
+
+🔄 Running Louvain clustering for 363 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 72
+
+🔄 Running Louvain clustering for 72 runs...
+📊 Run: 72
+   - 90% Quantile of Relative Differences: 0.388889 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 86
+
+🔄 Running Louvain clustering for 86 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 72
+
+🔄 Running Louvain clustering for 72 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 72
+
+🔄 Running Louvain clustering for 72 runs...
+📊 Run: 72
+   - 90% Quantile of Relative Differences: 0.388889 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 86
+
+🔄 Running Louvain clustering for 86 runs...
+📊 Run: 86
+   - 90% Quantile of Relative Differences: 0.395349 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 103
+
+🔄 Running Louvain clustering for 103 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 22
+   - 90% Quantile of Relative Differences: 45454545.454545 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 73.12% (Threshold: 95%)
+   - Overlapping Genes (68/93)
+🔼 Increasing runs to 72
+
+🔄 Running Louvain clustering for 72 runs...
+📊 Run: 36
+   - 90% Quantile of Relative Differences: 27777777.777778 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 83.87% (Threshold: 95%)
+   - Overlapping Genes (78/93)
+🔼 Increasing runs to 86
+
+🔄 Running Louvain clustering for 86 runs...
+📊 Run: 53
+   - 90% Quantile of Relative Differences: 1.037736 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 80.65% (Threshold: 95%)
+   - Overlapping Genes (75/93)
+🔼 Increasing runs to 103
+
+🔄 Running Louvain clustering for 103 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 72
+
+🔄 Running Louvain clustering for 72 runs...
+📊 Run: 72
+   - 90% Quantile of Relative Differences: 0.388889 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 91.40% (Threshold: 95%)
+   - Overlapping Genes (85/93)
+🔼 Increasing runs to 86
+
+🔄 Running Louvain clustering for 86 runs...

@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # The file to extract genes from
-data_file="genes_all.txt"
+data_file="top_5%_stable_comm_ZEB2.txt"
 
 # The output file containing unique genes
-output_file="2311_genes.txt"
+output_file="genes_98.txt"
 
 # Check if data file exists
 if [ ! -f "$data_file" ]; then

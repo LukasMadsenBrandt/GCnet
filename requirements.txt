@@ -10,3 +10,5 @@ pandas==2.2.2
 python-louvain==0.16
 statsmodels==0.14.2
 kaleido==0.2.1
+tqdm==4.66.1
+scikit-learn==1.4.0

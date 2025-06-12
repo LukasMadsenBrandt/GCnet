@@ -46,9 +46,8 @@ from gene_analysis_kutsche.granger_causality import perform_granger_causality_te
 from gene_analysis_kutsche.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
 from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
 from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data as load_and_preprocess_kutsche
-from gene_analysis_kutsche.data_filtering import filter_data_proximity_based_weights as filter_proximity_kutsche
-from gene_analysis_kutsche.data_filtering import filter_data_arithmetic_mean as filter_mean_kutsche
-from gene_analysis_kutsche.data_filtering import filter_data_median as filter_median_kutsche
+from gene_analysis_kutsche.data_filtering import preprocess_pipeline as preprocess_pipeline
+
 
 #warnings.filterwarnings("ignore", message="'linear' x-axis tick spacing not even")
 warnings.filterwarnings("ignore")
@@ -225,7 +224,7 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
     partitions = run_multiple_louvain_parallel(G, n_runs)
     nodes, coassoc = build_coassociation_matrix(G, partitions)
     
-    plot = True
+    #plot = True
     # If n_clusters is not provided, compute it as the average number of communities over all partitions.
     if n_clusters is None:
         total_communities = sum(len(set(partition.values())) for partition in partitions)
@@ -256,7 +255,7 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
                 #debug_print(f"Number of unique genes: {len(union_genes)}")
         # Plot the consensus matrix, I.E the freaquencies of two genes being in the same community
         # Only plot the matrix with the pair of the gene of interest and the rest of the genes
-        if plot:
+        if plot != None:
             plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, plots_dir)
         num_genes_same_comm = len(union_genes)
     else:
@@ -420,7 +419,7 @@ def normalize(values, min_size=0.1, max_size=2.0):
     return [min_size + (max_size - min_size) * (v - min_val) / range_val for v in values]
 
 # Create Graphviz DOT representation
-def create_graphviz_dot(G, partition, community_colors, highlight_node=None, layout="dot"):
+def create_graphviz_dot(G, partition, community_colors, highlight_node=None, layout="dot", simple_layout=False):
     dot = graphviz.Digraph(engine=layout, format='svg')
 
     dot.attr(tooltip='')
@@ -435,7 +434,10 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
     for idx, node in enumerate(G.nodes()):
         community = partition.get(node, None)
         color_hex, color_name = community_colors.get(community, ("#d3d3d3", "gray"))
-        size = str(norm_outdegrees[idx])
+        if weighted_edges:
+            size = str(norm_outdegrees[idx])
+        else:
+            size = str(1)
 
         out_edges = G.out_edges(node, data=True)
         out_edges_info = []
@@ -460,7 +462,11 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
         node_style = 'filled'
         node_penwidth = '3' if node == highlight_node else '1'
 
-        dot.node(node, label=node, shape='circle', style=node_style, fillcolor=color_hex, color='black', penwidth=node_penwidth, tooltip=hover_text, width=size, height=size, fixedsize='true')
+        if simple_layout:
+            # For simple layout, use a smaller size and different style
+            dot.node(node, label=node, shape='circle', style=node_style, fillcolor='white', color='black', penwidth='1', tooltip=hover_text, width=size, height=size, fixedsize='true')
+        else:
+            dot.node(node, label=node, shape='circle', style=node_style, fillcolor=color_hex, color='black', penwidth=node_penwidth, tooltip=hover_text, width=size, height=size, fixedsize='true')
 
     if not G.edges:
         return dot
@@ -491,7 +497,10 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
         if highlight_node and source == highlight_node:
             color_hex, weight = 'black', str(norm_p_values[idx] + 3)
 
-        dot.edge(source, target, color=color_hex, penwidth=weight, tooltip=hover_text)
+        if simple_layout:
+            dot.edge(source, target, color='black', penwidth='1', tooltip=hover_text)
+        else:
+            dot.edge(source, target, color=color_hex, penwidth=weight, tooltip=hover_text)
 
     return dot
 
@@ -921,11 +930,12 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
         data_dict = benito_data
     elif dataset == 'kutsche':
         if summarization_technique == 'proximity':
-            filter_function = filter_proximity_kutsche
+            aggregation = 'robust'
         elif summarization_technique == 'mean':
-            filter_function = filter_mean_kutsche
+            aggregation = 'mean'
         elif summarization_technique == 'median':
-            filter_function = filter_median_kutsche
+            aggregation = 'median'
+        data_human, df, day_map = preprocess_pipeline(df_human, normalize=False, transformed=False, aggregation=aggregation)
         data_dict = kutsche_data
     else:
         data_dict = {'proximity': None, 'mean': None, 'median': None}
@@ -974,12 +984,12 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
                 else:
                     df_human = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'genes.txt'))
                     if summarization_technique == 'proximity':
-                        filter_function = filter_proximity_kutsche
+                        aggregation = 'robust'
                     elif summarization_technique == 'mean':
-                        filter_function = filter_mean_kutsche
+                        aggregation = 'mean'
                     elif summarization_technique == 'median':
-                        filter_function = filter_median_kutsche
-                    data_human, df, day_map = filter_function(df_human)
+                        aggregation = 'median'
+                    data_human, df, day_map = preprocess_pipeline(df_human, normalize=False, transformed=False, aggregation=aggregation)
                     # Remove rows with all 0's
                     data_human = data_human.loc[(data_human != 0).any(axis=1)]
                     data_dict[summarization_technique] = perform_gc_kutsche(data_human)
@@ -1179,7 +1189,7 @@ def compute_heavy_network(apply_click,
     debug_print(f"Edges: {len(G.edges)}")
 
     # Save the gene names to a file
-    genes_names(G)
+    # genes_names(G)
 
     # Run community detection (you may choose consensus or another method)
     if community_detection_method == 'consensus':

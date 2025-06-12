@@ -1,0 +1,7 @@
+1. Take the genes_all.txt list of genes.
+2. do len(genes_all.txt) * len(genes_all.txt) GC results 2311*2310 = 5338410 using main.py on super computer
+3. find threshold for lower 0,05% quantile using p_threshhold_quantile.py
+4. (optional) run grep "ZEB2" {filename_from_step_2} | awk -F',' '$(NF) <= {threshold_from_step_3}'
+5. Create consensus partition on the {filename_from_step_2} using ucloud_computing.py on super computer
+6. Take the {filename_from_step_5} but only keep the top5% genes + ZEB2 itself. And run explore new genes on that file, to get len(top5%+ZEB2)*len(Kutsche_counts)+len(Kutsche_counts)*len(top5%+ZEB2) GC results.
+7. (optional) Visualize this new network from step 6, otherwise just analyze the .csv

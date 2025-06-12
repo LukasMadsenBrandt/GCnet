@@ -12,7 +12,7 @@ from statsmodels.tsa.api import VAR
 
 # Load and filter data
 df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'genes_all.txt'))
-df_human, raw_data, day_map = preprocess_pipeline(df, logged=False)
+df_human, raw_data, day_map = preprocess_pipeline(df, normalize=False, transformed=False, aggregation="robust")
 
 
 # Initialize the Dash app
@@ -48,7 +48,9 @@ app.layout = html.Div(style={'display': 'flex', 'flexDirection': 'column', 'alig
     ])
 ])
 def log_transform_data(df_selected):
-    return df_selected.apply(np.log)
+    return np.sqrt(df_selected)  # Use np.sqrt for square root transformation
+    #return np.log1p(df_selected)  # Use np.log1p for log(1 + x) to handle zero values gracefully
+
 
 @app.callback(
     [Output('gene-plot', 'figure'),
@@ -70,7 +72,7 @@ def update_plot(selected_genes, n_clicks, n_clicks_timestamp):
 
     if log_transformed:
         log_transformed_data = log_transform_data(df_selected)
-        log_transform_status = "Data log transformed"
+        log_transform_status = "Data sqrt transformed"
     else:
         log_transformed_data = df_selected
         log_transform_status = "Data is not log transformed"
@@ -80,9 +82,8 @@ def update_plot(selected_genes, n_clicks, n_clicks_timestamp):
         fig.add_trace(go.Scatter(x=x_values, y=y_values.values, mode='lines+markers', name=gene))
 
     # Apply a consistent layout every time the figure is updated
-    yaxis_title = "Log Expression Level" if log_transformed else "Expression Level"
+    yaxis_title = "Squared Expression Level" if log_transformed else "Expression Level"
     fig.update_layout(
-        title="Gene Expression Over Time",
         xaxis_title="Time (days)",
         xaxis_type="category",
         yaxis_title=yaxis_title,
@@ -90,7 +91,14 @@ def update_plot(selected_genes, n_clicks, n_clicks_timestamp):
         margin={'l': 40, 'r': 40, 't': 40, 'b': 40},  # Adjust margins for a cleaner look
         height=600,  # Set a fixed height for better appearance
         showlegend=True,  # Ensure legend is always shown
-        font={'size': 16}  # Increase font size for better readability
+        font={'size': 16},  # Increase font size for better readability
+        legend=dict(
+            orientation="v",
+            yanchor="bottom",
+            xanchor="right",
+            x=1,
+            y=0
+        )
     )
 
     return fig, log_transform_status
@@ -123,4 +131,5 @@ def download_svg(n_clicks, figure):
 # Run the app
 if __name__ == '__main__':
     app.run_server(debug=True)
+
 

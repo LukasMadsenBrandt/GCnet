@@ -31,7 +31,7 @@ def log_transform_data(df_selected):
     """ Apply safe natural log transformation using log1p (i.e., log(x + 1)) """
     return np.log1p(df_selected)
 
-def filter_data_wt(df, logged=True, normalize="deseq"):
+def filter_data_wt(df, transformed=True, normalize="deseq"):
     """
     Extract and optionally normalize and log-transform WT data.
     """
@@ -46,8 +46,10 @@ def filter_data_wt(df, logged=True, normalize="deseq"):
     if normalize == 'deseq':
         df_filtered_wt = normalize_with_size_factors(df_filtered_wt)
 
-    if logged:
+    if transformed == "log+1":
         df_filtered_wt = log_transform_data(df_filtered_wt)
+    elif transformed == "sqrt":
+        df_filtered_wt = np.sqrt(df_filtered_wt)
 
     return df_filtered_wt, day_map, ordered_columns
 
@@ -80,10 +82,10 @@ def aggregate_replicates(df_filtered_wt, day_map, method="robust"):
 
     return pd.DataFrame(aggregated_per_day)
 
-def preprocess_pipeline(df, normalize="deseq", logged=True, aggregation="robust"):
+def preprocess_pipeline(df, normalize="deseq", transformed="log+1", aggregation="robust"):
     """
     High-level pipeline: Filter, normalize, log-transform, and aggregate RNA-seq data.
     """
-    df_filtered_wt, day_map, _ = filter_data_wt(df, logged=logged, normalize=normalize)
+    df_filtered_wt, day_map, _ = filter_data_wt(df, transformed=transformed, normalize=normalize)
     df_aggregated = aggregate_replicates(df_filtered_wt, day_map, method=aggregation)
     return df_aggregated, df_filtered_wt, day_map

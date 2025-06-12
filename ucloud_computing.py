@@ -44,10 +44,10 @@ def run_louvain_once(G, seed):
     partition = community_louvain.best_partition(G.to_undirected(), random_state=seed)
     return partition
 
-def run_multiple_louvain_parallel(G, n_runs=100):
-    partitions = []
+def run_multiple_louvain_parallel(G, n_runs=100, existing_partitions=[]):
+    partitions = existing_partitions.copy()
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(run_louvain_once, G, seed) for seed in range(n_runs)]
+        futures = [executor.submit(run_louvain_once, G, seed) for seed in range(len(existing_partitions), n_runs)]
         for future in concurrent.futures.as_completed(futures):
             partitions.append(future.result())
     debug_print(f"Consensus detection complete: {len(partitions)} partitions run (expected {n_runs}).")
@@ -68,8 +68,8 @@ def build_coassociation_matrix(G, partitions):
     coassoc /= len(partitions)
     return nodes, coassoc
 
-def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, plot = None):
-    partitions = run_multiple_louvain_parallel(G, n_runs)
+def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, plot = None, existing_partitions=[]):
+    partitions = run_multiple_louvain_parallel(G, n_runs, existing_partitions)
     nodes, coassoc = build_coassociation_matrix(G, partitions)
     
     plot = True
@@ -252,13 +252,13 @@ if __name__ == '__main__':
     os.chdir(dname)
 
     # Parameters
-    pvalue_global = 0.0004
-    p_threshold = 0.0004
+    pvalue_global = 0.004
+    p_threshold = 0.004
     genelist_global = ["ZEB2"]
     debug_log(f"Starting stability check for {genelist_global}")
 
     # Load gene pairs and build the network
-    filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results.csv",
+    filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_truncated.csv",
                                                p_threshold=pvalue_global,
                                                starting_genes=genelist_global,
                                                higher_threshold_for_starting_genes=pvalue_global)
@@ -273,7 +273,7 @@ if __name__ == '__main__':
 
     # Initialize parameters
     gene_of_interest = "ZEB2"
-    current_runs = 50  # Start at 5000
+    current_runs = 5000  # Start at 5000
     increment = 0.2     # Increase in steps of 1000
     tolerance = 0.05      # 5% threshold for stability based on 90% quantile
 
@@ -285,6 +285,7 @@ if __name__ == '__main__':
     # Track previous runs for stability checks
     previous_runs = set()
 
+    partitions = []  # Initialize partitions
     # Start stability search
     while True:
         if current_runs in previous_runs:
@@ -295,7 +296,7 @@ if __name__ == '__main__':
 
         # Run Louvain clustering
         consensus, coassoc, partitions, n_of_genes_in_interest_gene_community, nodes = consensus_partition(
-            G, n_runs=current_runs, gene_of_interest=gene_of_interest, plot=True
+            G, n_runs=current_runs, gene_of_interest=gene_of_interest, plot=True, existing_partitions=partitions
         )
 
         # Compute quantile thresholds

@@ -30,18 +30,17 @@ def main():
         df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'genes.txt'))
 
         print("Data loaded and preprocessed.")
-        df_filtered, raw_data, day_map = preprocess_pipeline(df, normalize="deseq", logged=True, aggregation="robust")
+        df_filtered, raw_data, day_map = preprocess_pipeline(df, normalize=False, transformed=False , aggregation="robust")
         print("Data filtered.")
         print(df_filtered[:5])
         #print 5 lines of the data
         print(len(df_filtered))
         #gc_results = perform_gc_kutsche(df_filtered, progress=True)
-        #gc_results = perform_granger_explore_new(df_filtered, progress=True)
+        gc_results = perform_granger_explore_new(df_filtered, progress=True)
         print("Granger causality tests performed.")
 
         # Save results
-        #save_results_to_csv_kutsche(gc_results, "granger_causality_results_test.csv")
-        print("Results saved to granger_causality_results_test.csv")
+        save_results_to_csv_kutsche(gc_results, "granger_causality_results_sqrt.csv")
     else:
         df_human = mapper_benito(
             datafile=os.path.join('Data', 'Benito', 'Benito_Human'),
