@@ -263,3 +263,34 @@ Starting stability check for ['ZEB2']
 🔼 Increasing runs to 86
 
 🔄 Running Louvain clustering for 86 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.309524 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 93.91% (Threshold: 95%)
+   - Overlapping Genes (108/115)
+🔼 Increasing runs to 72
+
+🔄 Running Louvain clustering for 72 runs...
+📊 Run: 72
+   - 90% Quantile of Relative Differences: 0.250000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 95.65% (Threshold: 95%)
+   - Overlapping Genes (110/115)
+🔼 Increasing runs to 86
+
+🔄 Running Louvain clustering for 86 runs...
+Starting stability check for ['ZEB2']
+
+🔄 Running Louvain clustering for 50 runs...
+🔼 Increasing runs to 60
+
+🔄 Running Louvain clustering for 60 runs...
+📊 Run: 60
+   - 90% Quantile of Relative Differences: 0.000000 (Threshold: 0.05)
+   - Top 5% Genes Overlap: 100.00% (Threshold: 95%)
+   - Overlapping Genes (193/193)
+✅ Stability detected at 60 runs.

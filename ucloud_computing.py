@@ -252,13 +252,13 @@ if __name__ == '__main__':
     os.chdir(dname)
 
     # Parameters
-    pvalue_global = 0.004
-    p_threshold = 0.004
+    pvalue_global = 0.0004
+    p_threshold = 0.0004
     genelist_global = ["ZEB2"]
     debug_log(f"Starting stability check for {genelist_global}")
 
     # Load gene pairs and build the network
-    filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_truncated.csv",
+    filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_truncated_top5%_00004.csv",
                                                p_threshold=pvalue_global,
                                                starting_genes=genelist_global,
                                                higher_threshold_for_starting_genes=pvalue_global)
@@ -273,7 +273,7 @@ if __name__ == '__main__':
 
     # Initialize parameters
     gene_of_interest = "ZEB2"
-    current_runs = 5000  # Start at 5000
+    current_runs = 50  # Start at 5000
     increment = 0.2     # Increase in steps of 1000
     tolerance = 0.05      # 5% threshold for stability based on 90% quantile
 

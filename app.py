@@ -419,8 +419,8 @@ def normalize(values, min_size=0.1, max_size=2.0):
     return [min_size + (max_size - min_size) * (v - min_val) / range_val for v in values]
 
 # Create Graphviz DOT representation
-def create_graphviz_dot(G, partition, community_colors, highlight_node=None, layout="dot", simple_layout=False):
-    dot = graphviz.Digraph(engine=layout, format='svg')
+def create_graphviz_dot(G, partition, community_colors, highlight_node=None, layout="dot", graph_attr={}, weighted_edges=False, simple_layout=False):
+    dot = graphviz.Digraph(engine=layout, format='svg', graph_attr=graph_attr)
 
     dot.attr(tooltip='')
 
@@ -464,7 +464,7 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
 
         if simple_layout:
             # For simple layout, use a smaller size and different style
-            dot.node(node, label=node, shape='circle', style=node_style, fillcolor='white', color='black', penwidth='1', tooltip=hover_text, width=size, height=size, fixedsize='true')
+            dot.node(node, label=node, shape='plaintext', style=node_style, fillcolor='white', color='black', penwidth='1', tooltip=hover_text, width=size, height=size, fixedsize='true')
         else:
             dot.node(node, label=node, shape='circle', style=node_style, fillcolor=color_hex, color='black', penwidth=node_penwidth, tooltip=hover_text, width=size, height=size, fixedsize='true')
 
@@ -1049,7 +1049,7 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
         filtered_pairs = filter_gene_pairs_kutsche(filepath = "granger_causality_results.csv", p_threshold=pvalue_global, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
         significant_edges = collect_significant_edges_kutsche(filtered_pairs, p_value_threshold=pvalue_global, file=True, filepath = filtered_pairs, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
     elif dataset == 'large_kutsche_top5%':
-        filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_top5%.csv",
+        filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results_truncated_top5%_00004.csv",
                                                    p_threshold=pvalue_global,
                                                    starting_genes=genelist_global,
                                                    higher_threshold_for_starting_genes=pvalue_global)

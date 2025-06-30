@@ -27,8 +27,8 @@ def main():
     if kutsche:            
         # Load and preprocess data
         print("Loading and preprocessing data...")
-        df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'genes.txt'))
-
+        df = load_and_preprocess_kutsche(os.path.join('Data', 'Kutsche', 'Kutsche_Counts.txt'))
+        suffix = "0001"
         print("Data loaded and preprocessed.")
         df_filtered, raw_data, day_map = preprocess_pipeline(df, normalize=False, transformed=False , aggregation="robust")
         print("Data filtered.")
@@ -36,11 +36,11 @@ def main():
         #print 5 lines of the data
         print(len(df_filtered))
         #gc_results = perform_gc_kutsche(df_filtered, progress=True)
-        gc_results = perform_granger_explore_new(df_filtered, progress=True)
+        gc_results = perform_granger_explore_new(df_filtered, progress=True, filepath=os.path.join('Data', 'Kutsche', f'gene_names_{suffix}.txt'))
         print("Granger causality tests performed.")
 
         # Save results
-        save_results_to_csv_kutsche(gc_results, "granger_causality_results_sqrt.csv")
+        save_results_to_csv_kutsche(gc_results, f"granger_causality_results_explore_{suffix}.csv")
     else:
         df_human = mapper_benito(
             datafile=os.path.join('Data', 'Benito', 'Benito_Human'),
@@ -58,12 +58,11 @@ def main():
         
 
 
-def perform_granger_explore_new(df_filtered_wt_weighted_mean, progress=False):
+def perform_granger_explore_new(df_filtered_wt_weighted_mean, progress=False, filepath=None):
     """
     Perform Granger causality tests on all pairs of genes.
     """
     time_series_data = df_filtered_wt_weighted_mean.T  # To make each column a timeseries
-    filepath = os.path.join('Data', 'Kutsche', 'top_5%_stable_comm_ZEB2.txt')
     
     with open(filepath, 'r') as file:
         # Read gene names directly, one per line

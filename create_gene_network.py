@@ -18,7 +18,8 @@ from app import (
 def build_gene_network(
     gene_list: List[str],
     csv_file: str,
-    p_threshold: float = 0.05
+    p_threshold: float = 0.05,
+    all_connections: bool = False
 ) -> nx.DiGraph:
     """
     Build a gene network from a CSV file given a list of starting genes and a p-value threshold.
@@ -36,13 +37,11 @@ def build_gene_network(
     assert required_columns.issubset(df.columns), f"Missing required columns: {required_columns - set(df.columns)}"
     
     # Filter
-    #df_filtered = df[(df['gene1'].isin(gene_list)) & (df['gene2'].isin(gene_list)) & (df['p-value'] <= p_threshold)]
-
-    # Filter for edges involving "ZEB2" and genes in gene_list
-    df_filtered = df[(((df['gene1'] == "ZEB2") & (df['gene2'].isin(gene_list))) | ((df['gene1'].isin(gene_list)) & (df['gene2'] == "ZEB2"))) & (df['p-value'] <= p_threshold)]
-
-    # If you want to filter by gene1 only, uncomment the next line:
-    # df_filtered = df[(df['gene1'].isin(gene_list)) & (df['p-value'] < p_threshold)]
+    if all_connections:
+        # If all_connections is True, include all edges involving genes in gene_list
+        df_filtered = df[(df['gene1'].isin(gene_list) | df['gene2'].isin(gene_list)) & (df['p-value'] <= p_threshold)]
+    else:
+        df_filtered = df[(((df['gene1'] == "ZEB2") & (df['gene2'].isin(gene_list))) | ((df['gene1'].isin(gene_list)) & (df['gene2'] == "ZEB2"))) & (df['p-value'] <= p_threshold)]
 
     # Build graph
     G = nx.DiGraph()
@@ -70,13 +69,21 @@ def visualize_gene_network(
     csv_file,
     p_threshold=0.05,
     layout="dot",
+    graph_attr={},
     highlight_node=None,
     output_path="output_graph",
     number_of_runs=None,  # Optional for consensus partitioning
     simple_layout=True  # Use simple layout for better readability
 ):
     # Build graph
-    G = build_gene_network(gene_list, csv_file, p_threshold)
+    if isinstance(gene_list, str):
+        all_connections = True
+        # If gene_list is a file path, read the file
+        with open(gene_list, 'r') as f:
+            gene_list = [line.strip() for line in f if line.strip()]
+    else:
+        all_connections = False
+    G = build_gene_network(gene_list, csv_file, p_threshold, all_connections=all_connections)
 
     if G.number_of_nodes() == 0:
         print("No edges found. Empty graph.")
@@ -90,7 +97,9 @@ def visualize_gene_network(
     else:
         partition = community_louvain.best_partition(G.to_undirected(), random_state=42)
 
-    # Assign colors
+    # Force a single community
+    partition = {node: 0 for node in G.nodes()}
+
     community_colors = assign_colors(partition)
 
     # Render DOT
@@ -100,6 +109,7 @@ def visualize_gene_network(
         community_colors=community_colors,
         highlight_node=highlight_node,
         layout=layout,
+        graph_attr=graph_attr,
         simple_layout=simple_layout  # Use simple layout for better readability
     )
 
@@ -146,14 +156,23 @@ if __name__ == "__main__":
     top3_out = [
         'ZEB2', 'RPL8', 'FBXW11', 'MTHFD1'
     ]
-    csv_path = "granger_causality_results_truncated.csv"
+    #file containing list of genes
+    genes_file = "Data/Kutsche/gene_names_00004_51.txt"  # Path to the file containing all gene names
+
+    csv_path = "granger_causality_results_truncated_top5%_00004.csv"
+    # Layout for Graphviz, can be 'dot', 'neato', 'fdp', 'circo', 'osage', 'sfdp', 'twopi', 'patchwork', etc.
+    layout="fdp"  
+    graph_attr = {
+    }
+
     visualize_gene_network(
-        gene_list=genes_0004,
+        gene_list=genes_file,
         csv_file=csv_path,
-        p_threshold=0.004,
-        layout="sfdp",
+        p_threshold=0.0004,
+        layout=layout,
+        graph_attr=graph_attr,
         highlight_node=None,
-        output_path="network_zeb2_0004_sfdp",
+        output_path=f"network_zeb2_00004_51_{layout}",
         number_of_runs=1000,  # Optional, set to None if not needed
-        simple_layout=True  # Use simple layout for better readability
+        simple_layout=False  # Use simple layout for better readability
     )
