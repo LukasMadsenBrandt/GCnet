@@ -1,3 +1,4 @@
+import re
 import subprocess
 import concurrent.futures
 import matplotlib
@@ -422,6 +423,7 @@ def normalize(values, min_size=0.1, max_size=2.0):
 def create_graphviz_dot(G, partition, community_colors, highlight_node=None, layout="dot", graph_attr={}, weighted_edges=False, simple_layout=False):
     dot = graphviz.Digraph(engine=layout, format='svg', graph_attr=graph_attr)
 
+
     dot.attr(tooltip='')
 
     # If the graph is empty, return an empty graph
@@ -466,7 +468,9 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
             # For simple layout, use a smaller size and different style
             dot.node(node, label=node, shape='plaintext', style=node_style, fillcolor='white', color='black', penwidth='1', tooltip=hover_text, width=size, height=size, fixedsize='true')
         else:
-            dot.node(node, label=node, shape='circle', style=node_style, fillcolor=color_hex, color='black', penwidth=node_penwidth, tooltip=hover_text, width=size, height=size, fixedsize='true')
+            label = wrap_label(node, max_chars=7)
+            margin = "0.1,0.05"
+            dot.node(node, label=label, shape='circle', style=node_style, fillcolor=color_hex, color='black', penwidth=node_penwidth, tooltip=hover_text, width=size, height=size, fixedsize='true', margin=margin)
 
     if not G.edges:
         return dot
@@ -504,6 +508,50 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
 
     return dot
 
+
+def wrap_label(name, max_chars=10):
+    """
+    Wrap a label string for Graphviz:
+     - Preferentially break at hyphens (“-”).
+     - If a resulting piece is still >= max_chars, hard-wrap it in (max_chars-2)-sized chunks.
+     - Then greedily pack pieces into lines of <= max_chars (so you never hit the hard limit).
+    """
+    hard_wrap = max_chars - 2
+    # 1) Split on hyphens, keeping “-” as its own token
+    parts = name.split("-")
+    tokens = []
+    for i, part in enumerate(parts):
+        tokens.append(part)
+        if i < len(parts) - 1:
+            tokens.append("-")
+
+    # 2) Hard-wrap any token that’s still too long
+    expanded = []
+    for tok in tokens:
+        if tok == "-" or len(tok) < max_chars:
+            expanded.append(tok)
+        else:
+            # break into hard_wrap-sized chunks
+            for i in range(0, len(tok), hard_wrap):
+                expanded.append(tok[i : i + hard_wrap])
+
+    # 3) Greedy line-packing up to max_chars
+    lines = []
+    current = ""
+    for tok in expanded:
+        # candidate line if we add this token
+        candidate = current + tok
+        if len(candidate) > max_chars:
+            if current:
+                lines.append(current)
+            current = tok
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+
+    # join with literal “\n” for Graphviz
+    return "\\n".join(lines)
 
 
 # Function to compare datasets and find intersections

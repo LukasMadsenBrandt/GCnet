@@ -1,0 +1,11 @@
+All genes with a frequency of being in the same community as ZEB2 of 1.
+Meaning these genes have been in the same community as ZEB2 in 100% of partitions
+
+Network for 137 genes:
+
+gene1 and gene2 must be in the list, 2 communities:
+Nodes: 137, Edges: 137
+
+
+Atleast one of gene1 or gene2 must be in the list:
+Nodes: 191, Edges: 199

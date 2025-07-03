@@ -1,6 +1,9 @@
 # create_gene_network.py
 
 
+from itertools import chain
+import os
+from matplotlib import pyplot as plt
 import pandas as pd
 import networkx as nx
 from typing import List, Union, Tuple
@@ -9,11 +12,30 @@ from community import community_louvain
 from collections import Counter
 
 from app import (
-    assign_colors,
     create_graphviz_dot,
     consensus_partition
 )
 
+def assign_colors(partition, primary_gene="ZEB2"):
+    print(f"Assigning colors to communities: {set(partition.values())}")
+    cmaps = ['tab20', 'tab20b']
+    all_colors = list(chain.from_iterable(plt.get_cmap(c).colors for c in cmaps))
+    community_colors = {}
+
+    # Ensure the community of the primary_gene is first in order
+    if primary_gene and primary_gene in partition:
+        primary_community = partition[primary_gene]
+        unique_communities = [primary_community] + [c for c in sorted(set(partition.values())) if c != primary_community]
+    else:
+        unique_communities = sorted(set(partition.values()))  # Sort to maintain consistency
+
+    for idx, community in enumerate(unique_communities):
+        color = all_colors[idx % len(all_colors)]
+        color_hex = '#%02x%02x%02x' % tuple(int(255 * c) for c in color[:3])
+        community_colors[community] = (color_hex, str(idx + 1))  # Label communities as 1, 2, 3, ...
+
+    print(f"Assigned community colors: {community_colors}")
+    return community_colors
 
 def build_gene_network(
     gene_list: List[str],
@@ -42,13 +64,15 @@ def build_gene_network(
         df_filtered = df[(df['gene1'].isin(gene_list) | df['gene2'].isin(gene_list)) & (df['p-value'] <= p_threshold)]
     else:
         df_filtered = df[(((df['gene1'] == "ZEB2") & (df['gene2'].isin(gene_list))) | ((df['gene1'].isin(gene_list)) & (df['gene2'] == "ZEB2"))) & (df['p-value'] <= p_threshold)]
-
+    print("Filtered edges:", len(df_filtered))
     # Build graph
     G = nx.DiGraph()
     for _, row in df_filtered.iterrows():
         source, target, lag, p = row['gene1'], row['gene2'], row['lag'], row['p-value']
         G.add_edge(source, target, lag=lag, p_value=p)
     
+    print(f"Graph built, Nodes: {len(G.nodes)}, Edges: {len(G.edges)}" )
+
     return G
 
 # Optional: Export
@@ -95,10 +119,10 @@ def visualize_gene_network(
         consensus, coassoc, partitions, n_of_genes_in_interest_gene_community = consensus_partition(G, n_runs=number_of_runs, gene_of_interest="ZEB2")
         partition = consensus
     else:
-        partition = community_louvain.best_partition(G.to_undirected(), random_state=42)
+        # Use Louvain method for community detection
+        ##partition = community_louvain.best_partition(G.to_undirected(), resolution=1.0, random_state=42)
+        partition = {node: 0 for node in G.nodes()}
 
-    # Force a single community
-    partition = {node: 0 for node in G.nodes()}
 
     community_colors = assign_colors(partition)
 
@@ -112,9 +136,12 @@ def visualize_gene_network(
         graph_attr=graph_attr,
         simple_layout=simple_layout  # Use simple layout for better readability
     )
+    print("Figure Created")
 
     # Save to SVG
-    svg_path = f"{output_path}"
+    svg_path = f"{output_path}"  # e.g. "network/.../network_ZEB2_..."
+    out_dir = os.path.dirname(svg_path)
+    os.makedirs(out_dir, exist_ok=True)
     dot.render(svg_path, format='svg', cleanup=True)
     print(f"Saved graph SVG to {svg_path}")
 
@@ -122,6 +149,9 @@ def visualize_gene_network(
 
 
 if __name__ == "__main__":
+    abspath = os.path.abspath(__file__)
+    dname = os.path.dirname(abspath)
+    os.chdir(dname)
     genes_00004 = ["ZEB2", "CCND2", "RIC1", "DHDDS", "RPL8"]
     genes_0004 = [
     'AIMP1',
@@ -156,23 +186,41 @@ if __name__ == "__main__":
     top3_out = [
         'ZEB2', 'RPL8', 'FBXW11', 'MTHFD1'
     ]
+    pvalue_threshold = 0.001  # Adjusted p-value threshold for filtering edges
+    string_pvalue_threshold = str(pvalue_threshold).replace(".", "")
+    number_of_genes = 113  # Number of genes to consider
     #file containing list of genes
-    genes_file = "Data/Kutsche/gene_names_00004_51.txt"  # Path to the file containing all gene names
 
-    csv_path = "granger_causality_results_truncated_top5%_00004.csv"
     # Layout for Graphviz, can be 'dot', 'neato', 'fdp', 'circo', 'osage', 'sfdp', 'twopi', 'patchwork', etc.
-    layout="fdp"  
+    layout="fdp"
     graph_attr = {
+        "nodesep": "0.2",  # minimal horizontal distance between nodes
+        "ranksep": "0.2",  # minimal vertical distance between ranks (layers
+        "pad": "0.2",  # extra whitespace around the entire drawing
+        'outputorder': 'edgesfirst',
+        "splines": "true",
     }
+    if (True):
+        csv_path = f"granger_causality_results_truncated.csv"
+        consensus_step = "1st_consensus_clustering"  # Step in the analysis, can be used for naming output files
+        genes_file = f"Data/Kutsche/{string_pvalue_threshold}/gene_names_{string_pvalue_threshold}_{number_of_genes}.txt"  # Path to the file containing all gene names
+
+    else:
+        genes_file = f"Data/Kutsche/{string_pvalue_threshold}_explore/gene_names_{string_pvalue_threshold}_{number_of_genes}.txt"  # Path to the file containing all gene names
+        consensus_step = "2nd_consensus_clustering_explore"
+        csv_path = f"granger_causality_results_explore_top5_{string_pvalue_threshold}.csv"
+
+
+    output_path = os.path.join("network", consensus_step, string_pvalue_threshold, f"{number_of_genes} genes", f"network_ZEB2_{string_pvalue_threshold}_{number_of_genes}_{layout}_curved_atleast_one_gene_in_list")
 
     visualize_gene_network(
         gene_list=genes_file,
         csv_file=csv_path,
-        p_threshold=0.0004,
+        p_threshold=pvalue_threshold,
         layout=layout,
         graph_attr=graph_attr,
         highlight_node=None,
-        output_path=f"network_zeb2_00004_51_{layout}",
-        number_of_runs=1000,  # Optional, set to None if not needed
+        output_path=output_path,
+        number_of_runs=None,  # Optional, set to None if not needed
         simple_layout=False  # Use simple layout for better readability
     )
