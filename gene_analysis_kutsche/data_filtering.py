@@ -1,3 +1,5 @@
+"""Kutsche expression preprocessing and replicate aggregation helpers."""
+
 import numpy as np
 import pandas as pd
 

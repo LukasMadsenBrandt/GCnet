@@ -1,0 +1,6 @@
+# Tiny demo seed set. Replace with a curated neurodeficiency gene list.
+ZEB2
+MECP2
+FMR1
+RPL8
+

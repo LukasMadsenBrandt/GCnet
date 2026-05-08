@@ -1,1 +1,0 @@
-the top 5% of genes in the "granger_causality_results_truncated_top5%_00004.txt" file with the highest frequency

@@ -1,3 +1,5 @@
+"""Benito expression preprocessing and replicate aggregation helpers."""
+
 import numpy as np
 import pandas as pd
 
@@ -86,4 +88,5 @@ def filter_data_median(data):
     return log_df_median_per_day, data_filtered, day_map
 
 def log_transform_data(df_selected):
+    """Apply natural-log transformation to a dataframe."""
     return df_selected.apply(np.log)

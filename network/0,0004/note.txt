@@ -1,4 +1,0 @@
-Files with "curved" in filename, means that the edges between nodes can curved
-Files with "nooverlap" in filename, means that the layout was scaled in order to reduce overlap.
-
-Personally I think the ones with only Curved or none at all gives the best understanding of the network.

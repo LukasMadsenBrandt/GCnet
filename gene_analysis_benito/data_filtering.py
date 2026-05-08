@@ -1,3 +1,5 @@
+"""Benito dataset mapping helpers used before timepoint aggregation."""
+
 import pandas as pd
 
 def map_gene_name_to_data(mappingfile):
@@ -12,6 +14,7 @@ def map_gene_name_to_data(mappingfile):
     return mapping
 
 def put_mapping_inside_of_datafile(datafile, mapping):
+    """Load a Benito featureCounts file and add a mapped ``Gene_Name`` column."""
     # Load the data from the CSV file, tab-separated and skipping initial metadata lines
     df = pd.read_csv(datafile, sep='\t', header=1, on_bad_lines='skip')
 
@@ -42,6 +45,7 @@ def map_speciment_to_species_and_day(data_with_gene_name, map_speciment_to_gene_
 
 
 def replace_speciment_with_timepoint(run_to_time_point, column_name):
+    """Replace SRR identifiers in a count column with their mapped timepoint."""
     # Check if the column name contains a Run identifier and replace it with Time_point
     for run_id, time_point in run_to_time_point.items():
         if run_id in column_name:
@@ -56,6 +60,7 @@ def replace_speciment_with_timepoint(run_to_time_point, column_name):
 
 
 def filter_data(datafile, mappingfile, map_speciment_to_gene_file):
+    """Map gene IDs and SRR samples in a Benito count file to analysis labels."""
 
     # Using all three methods, filter the data.
     mapping = map_gene_name_to_data(mappingfile)

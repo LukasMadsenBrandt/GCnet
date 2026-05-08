@@ -1,3 +1,5 @@
+"""Main Dash dashboard for exploring gene networks and expression traces."""
+
 import re
 import subprocess
 import concurrent.futures
@@ -48,6 +50,7 @@ from gene_analysis_kutsche.granger_causality import filter_gene_pairs as filter_
 from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
 from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data as load_and_preprocess_kutsche
 from gene_analysis_kutsche.data_filtering import preprocess_pipeline as preprocess_pipeline
+from gene_analysis_common.network import create_network
 
 
 #warnings.filterwarnings("ignore", message="'linear' x-axis tick spacing not even")
@@ -71,37 +74,44 @@ for directory in dirs:
 
 # Debugging utilities
 def debug_print(*args):
+    """Print debug messages when dashboard debugging is enabled."""
     if debugging:
         print(" ".join(map(str, args)))
 
 
 def debug_print_edges(edges, message):
+    """Print a labeled list of graph edges for debugging."""
     debug_print(message)
     for edge in edges:
         debug_print(edge)
 
 # Additional debug functions
 def debug_print_nodes(graph, message):
+    """Print a labeled list of graph nodes for debugging."""
     debug_print(message)
     for node in graph.nodes():
         debug_print(node)
 
 def debug_print_graph_details(graph, message):
+    """Print node and edge counts for a graph during debugging."""
     debug_print(message)
     debug_print(f"Nodes: {list(graph.nodes())}")
     debug_print(f"Edges: {list(graph.edges(data=True))}")
 
 def get_cache_filename(dataset, method):
+    """Return the cache filename for a dataset/method pair."""
     filename = os.path.join(cache_dir, f'{dataset}_data_{method}.pkl')
     debug_print(f"Cache file: {filename}")  # Debug statement
     return filename
 
 def save_cache(data, filename):
+    """Serialize cached dashboard data to disk."""
     with open(filename, 'wb') as f:
         pickle.dump(data, f)
     debug_print(f"Saved cache to {filename}")  # Debug statement
 
 def load_cache(filename):
+    """Load cached dashboard data when the cache file exists."""
     if os.path.exists(filename):
         debug_print(f"Loading cache from {filename}")  # Debug statement
         with open(filename, 'rb') as f:
@@ -110,6 +120,7 @@ def load_cache(filename):
     return None
 
 def clear_directory(dir):
+    """Remove files from a directory without deleting the directory itself."""
     for filename in os.listdir(dir):
         file_path = os.path.join(dir, filename)
         try:
@@ -121,38 +132,25 @@ def clear_directory(dir):
             debug_print(f'Failed to delete {file_path}. Reason: {e}')
 
 
-# Create a directed graph based on significant edges
-def create_network(significant_edges):
-    G = nx.DiGraph()
-    for edge in significant_edges:
-        if len(edge) == 3:  # For benito and kutsche datasets
-            (source, lag), (target, _), p_value = edge
-            G.add_edge(source, target, lag=lag, p_value=p_value)
-        elif len(edge) == 4:  # For intersection dataset
-            (source, lag), (target, _), kutsche_p_value, benito_p_value = edge
-            avg_p_value = (kutsche_p_value + benito_p_value) / 2
-            G.add_edge(source, target, lag=lag, kutsche_p_value=kutsche_p_value, benito_p_value=benito_p_value, p_value=avg_p_value)
-        else:
-            debug_print(f"Something went wrong with edge: {edge}")
-            raise ValueError("Invalid edge format")
-    return G
-
-
 # Hash the significant edges for caching
 def hash_significant_edges(significant_edges):
+    """Return a stable hash for a significant-edge collection."""
     return hashlib.md5(pickle.dumps(significant_edges)).hexdigest()
 
 # Convert partition to tuple for caching
 def partition_to_tuple(partition):
+    """Convert a partition mapping into a hashable sorted tuple."""
     return tuple(sorted(partition.items()))
 
 # Convert tuple back to partition
 def tuple_to_partition(t):
+    """Convert a hashable partition tuple back into a dictionary."""
     return dict(t)
 
 # Apply community detection to a graph
 @lru_cache(maxsize=1)
 def cached_apply_community_detection(graph_pickle, method, num_communities):
+    """Cached wrapper around community detection for a pickled graph."""
     G = pickle.loads(graph_pickle)  # Deserialize the graph
     return apply_community_detection(G, method, num_communities)
 
@@ -194,10 +192,12 @@ def girvan_newman_community_detection(G, num_communities=2):
 from sklearn.cluster import AgglomerativeClustering
 
 def run_louvain_once(G, seed):
+    """Run one seeded Louvain partition on an undirected graph view."""
     partition = community_louvain.best_partition(G.to_undirected(), random_state=seed)
     return partition
 
 def run_multiple_louvain_parallel(G, n_runs=100):
+    """Run multiple Louvain partitions in parallel."""
     partitions = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [executor.submit(run_louvain_once, G, seed) for seed in range(n_runs)]
@@ -208,6 +208,7 @@ def run_multiple_louvain_parallel(G, n_runs=100):
 
 
 def build_coassociation_matrix(G, partitions):
+    """Build a coassociation matrix from repeated community partitions."""
     nodes = list(G.nodes())
     n = len(nodes)
     coassoc = np.zeros((n, n))
@@ -222,6 +223,7 @@ def build_coassociation_matrix(G, partitions):
     return nodes, coassoc
 
 def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, plot = None):
+    """Run repeated Louvain consensus and optional plotting for a graph."""
     partitions = run_multiple_louvain_parallel(G, n_runs)
     nodes, coassoc = build_coassociation_matrix(G, partitions)
     
@@ -340,6 +342,7 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
 
 
 def apply_community_detection(G, method='louvain', num_communities=None):
+    """Apply the selected community detection method to a graph."""
     debug_print(f"Applying community detection method: {method}, num_communities: {num_communities}")
     if G.number_of_nodes() == 0:
         debug_print("Graph is empty, no community detection possible.")
@@ -371,6 +374,7 @@ def apply_community_detection(G, method='louvain', num_communities=None):
 
 # Reduce the number of communities to the specified number
 def reduce_communities(partition, num_communities):
+    """Merge community labels down to the requested number of groups."""
     community_counts = Counter(partition.values())
     most_common_communities = [community for community, _ in community_counts.most_common(num_communities)]
     
@@ -387,11 +391,13 @@ def reduce_communities(partition, num_communities):
 # Assign colors to communities
 @lru_cache(maxsize=32)
 def cached_assign_colors(partition_tuple):
+    """Cached wrapper that assigns colors to a hashable partition tuple."""
     partition = tuple_to_partition(partition_tuple)
     return assign_colors(partition)
 
 # Modified assign_colors function to label communities numerically
 def assign_colors(partition):
+    """Assign display colors to community ids."""
     debug_print(f"Assigning colors to communities: {set(partition.values())}")
     cmap = plt.get_cmap('tab20')
     community_colors = {}
@@ -409,6 +415,7 @@ def assign_colors(partition):
 
 # Normalize values for visualization
 def normalize(values, min_size=0.1, max_size=2.0):
+    """Normalize numeric values into a display-size range."""
     if not values:
         return [min_size] * len(values)
 
@@ -420,7 +427,8 @@ def normalize(values, min_size=0.1, max_size=2.0):
     return [min_size + (max_size - min_size) * (v - min_val) / range_val for v in values]
 
 # Create Graphviz DOT representation
-def create_graphviz_dot(G, partition, community_colors, highlight_node=None, layout="dot", graph_attr={}, weighted_edges=False, simple_layout=False):
+def create_graphviz_dot(G, partition, community_colors, highlight_node=None, layout="dot", graph_attr={}, weighted_edges=False, simple_layout=False, highlight_new_genes=(False, [])):
+    """Create a Graphviz DOT object for a gene network."""
     dot = graphviz.Digraph(engine=layout, format='svg', graph_attr=graph_attr)
 
 
@@ -433,6 +441,8 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
     outdegrees = [G.out_degree(node) for node in G.nodes()]
     norm_outdegrees = normalize(outdegrees, min_size=1, max_size=2)
 
+
+
     for idx, node in enumerate(G.nodes()):
         community = partition.get(node, None)
         color_hex, color_name = community_colors.get(community, ("#d3d3d3", "gray"))
@@ -440,6 +450,9 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
             size = str(norm_outdegrees[idx])
         else:
             size = str(1)
+            
+        if highlight_new_genes[0] and node not in highlight_new_genes[1]:
+            color_hex = '#ff7f00'
 
         out_edges = G.out_edges(node, data=True)
         out_edges_info = []
@@ -489,6 +502,10 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
 
         weight = str(norm_p_values[idx])
         color_hex, _ = community_colors.get(partition.get(source), ("#d3d3d3", "gray"))
+
+        if highlight_new_genes[0] and source not in highlight_new_genes[1]:
+            color_hex = '#ff7f00'
+
         if kutsche_p_value is not None and benito_p_value is not None:
             hover_text = html_escape.escape(
                 f'{source} may Granger Cause {target} at lag {lag} with a p-value of {kutsche_p_value:.6f}(Kutsche) and a p-value of {benito_p_value:.6f}(Benito-Kwiecinski)'
@@ -498,8 +515,8 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
                 f'{source} may Granger Cause {target} at lag {lag} with a p-value of {p_value:.6f}'
             )
 
-        if highlight_node and source == highlight_node:
-            color_hex, weight = 'black', str(norm_p_values[idx] + 3)
+        #if highlight_node and source == highlight_node:
+        #    color_hex, weight = 'black', str(norm_p_values[idx] + 3)
 
         if simple_layout:
             dot.edge(source, target, color='black', penwidth='1', tooltip=hover_text)
@@ -556,6 +573,7 @@ def wrap_label(name, max_chars=10):
 
 # Function to compare datasets and find intersections
 def compare_datasets(kutsche, benito):
+    """Return edge overlap and dataset-specific edge sets."""
     dict1 = {(row['Gene1'], row['Gene2'], row['Lag']): row['P_Value'] for index, row in kutsche.iterrows()}
     dict2 = {(row['Gene1'], row['Gene2'], row['Lag']): row['P_Value'] for index, row in benito.iterrows()}
 
@@ -572,6 +590,7 @@ def compare_datasets(kutsche, benito):
 def update_graph_function(significant_edges, selected_communities, search_value, layout,
                           community_detection_method="louvain", num_communities=None,
                           partition_override=None):
+    """Build the dashboard graph HTML and community selector state."""
     # Create network from edges
     G = create_network(significant_edges)
     
@@ -929,6 +948,7 @@ app.index_string = '''
     Input('community-detection-method-dropdown', 'value')
 )
 def show_hide_consensus_runs(method):
+    """Show consensus-run controls only for consensus clustering."""
     if method == 'consensus':
         return {'display': 'block'}
     return {'display': 'none'}
@@ -954,6 +974,7 @@ def show_hide_consensus_runs(method):
     prevent_initial_call=True
 )
 def send_selections(n_clicks, dataset, summarization_technique, community_detection_method, toggle_state):
+    """Store high-level dashboard selections after the user applies them."""
     if n_clicks is None:
         return [], [], "", {'display': 'block'}, 'Please select options and press "Send" to generate the graph.', None, None, None, '', 2
 
@@ -1153,6 +1174,7 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
 def compute_heavy_network(apply_click,
                           p_threshold, dataset, summarization_technique,
                           community_detection_method, num_communities, num_consensus_runs):
+    """Compute the heavy network payload for the current dashboard settings."""
     global benito_data, kutsche_data
     if not dataset or not summarization_technique:
         return None
@@ -1267,6 +1289,7 @@ def compute_heavy_network(apply_click,
 
 # Export genes to /n seperated file
 def genes_names(network):
+    """Write node names from a dashboard graph to a newline-separated file."""
     # Get the gene names from the network
     gene_names = []
     with open('genes.txt', 'w') as f:
@@ -1292,6 +1315,7 @@ def genes_names(network):
      prevent_initial_call=True
 )
 def update_graph(heavy_data, apply_comm_clicks, selected_communities, layout, search_value):
+    """Render the visible network from precomputed heavy dashboard data."""
     # If heavy data isn’t present, do nothing.
     #debug_print("Filtering callback triggered, heavy_data:", heavy_data)
     if not heavy_data or 'graph_pickle' not in heavy_data or 'partition' not in heavy_data:
@@ -1349,6 +1373,7 @@ def update_graph(heavy_data, apply_comm_clicks, selected_communities, layout, se
     prevent_initial_call=True
 )
 def toggle_all_communities_callback(n_clicks, community_options, selected_communities, toggle_state):#
+    """Toggle all community filter options from the dashboard button."""
     if n_clicks is None:
         return selected_communities, toggle_state
 
@@ -1359,6 +1384,7 @@ def toggle_all_communities_callback(n_clicks, community_options, selected_commun
 
 # Toggles all communities in the checklist
 def toggle_all_communities(community_options, toggle_state):
+    """Return selected community values and the next toggle state."""
     all_communities = [option['value'] for option in community_options]
 
     if toggle_state:
@@ -1377,12 +1403,14 @@ def toggle_all_communities(community_options, toggle_state):
     Input('community-detection-method-dropdown', 'value')
 )
 def show_hide_num_communities_input(method):
+    """Show the community-count input for methods that need it."""
     if method in ['girvan_newman']:
         return {'display': 'block'}
     return {'display': 'none'}
 
 
 def create_combined_plot(figures, gene_names, title):
+    """Combine multiple Plotly figures into a single subplot figure."""
     # Determine the layout for subplots
     num_plots = len(figures)
     num_cols = 3  # Adjust as needed
@@ -1418,6 +1446,7 @@ def create_combined_plot(figures, gene_names, title):
      Input('heavy-network-store', 'data')]
 )
 def show_expression_plots(search_gene, dataset, summarization_technique, p_threshold, heavy_network):
+    """Render expression plots for the searched gene and influenced genes."""
     debug_print("Debug: Entered show_expression_plots")
     if not search_gene:
         debug_print("Debug: No search gene provided")
@@ -1468,6 +1497,7 @@ def show_expression_plots(search_gene, dataset, summarization_technique, p_thres
     return dcc.Graph(figure=combined_plot)
 
 def plot_gene_expression(df_human, print_data=False):
+    """Create a Plotly time-series figure from expression data."""
     import plotly.tools as tls
     import matplotlib.pyplot as plt
     import numpy as np
@@ -1517,6 +1547,7 @@ def plot_gene_expression(df_human, print_data=False):
     return graph, plotly_fig  # Return both the plotly graph and the plotly figure
 
 def fig_to_plotly(fig):
+    """Convert a Matplotlib figure into a Plotly-compatible figure."""
     import plotly.tools as tls
     debug_print("Debug: Converting Matplotlib figure to Plotly")
     plotly_fig = tls.mpl_to_plotly(fig)
@@ -1537,6 +1568,7 @@ def fig_to_plotly(fig):
      State('current-summarization-technique', 'data')]
 )
 def update_show_plots_button(search_value, dataset, summarization_technique, p_threshold, community_detection_method, num_communities, selected_communities, current_dataset, current_summarization_technique):
+    """Enable the expression-plot button when a valid search can be run."""
     if not search_value or dataset != current_dataset or summarization_technique != current_summarization_technique:
         return {'display': 'none'}
 
@@ -1605,6 +1637,7 @@ def update_show_plots_button(search_value, dataset, summarization_technique, p_t
     [State('network-graph', 'srcDoc')]
 )
 def export_graph_as_html(n_clicks, srcdoc):
+    """Download the currently rendered network HTML."""
     if n_clicks and srcdoc:
         # Return the srcDoc as an HTML file for download
         return dcc.send_string(srcdoc, 'network.html')
@@ -1618,6 +1651,7 @@ def export_graph_as_html(n_clicks, srcdoc):
     [State('p-threshold-input', 'value')]
 )
 def sync_p_value(n_clicks, input_value):
+    """Copy a manually entered p-value into the slider state."""
     if n_clicks is None:
         raise PreventUpdate
 
