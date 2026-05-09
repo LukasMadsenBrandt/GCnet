@@ -1,165 +1,91 @@
-# Gene Analysis Dashboard
+# Gene Analysis Pipeline
 
-## Description
+Guided neurodeficiency gene-expansion pipeline using Granger causality,
+network construction, stability-controlled Louvain consensus, and ranked
+candidate gene lists. Historical dashboard and exploratory scripts are kept
+under `scripts/legacy/`, but the YAML pipeline runner is the main application.
 
-This tool was developed while writing my Bachelor's Thesis in Computer Science.
-The tool is used for gene analysis using data from the Benito-Kwiecinski and Kutsche datasets.
-All the visualizations are based on the results of [Granger Causality Test](https://en.wikipedia.org/wiki/Granger_causality).
+The pipeline is intentionally not brute-force all-pairs discovery first. It
+starts from a curated seed gene set, finds directed GC relationships inside that
+trusted set, uses the strongest seed-network communities to probe the full
+dataset, extracts the discovered network gene set `n`, and only then runs
+expanded GC on `n * (n - 1)` ordered pairs.
 
-## Setup Instructions
+## Quick Start
 
-### Prerequisites
-
-- Python 3.6 or higher
-- Graphviz installed and added to PATH
-
-### Installation Instructions
-
-#### Installing Python
-
-**On Windows:**
-
-1. Download Python from the official website: [Python Downloads](https://www.python.org/downloads/windows/).
-2. Run the installer and ensure you check the box that says "Add Python to PATH".
-3. Follow the installation steps.
-
-**On macOS:**
-
-1. Download Python from the official website: [Python Downloads](https://www.python.org/downloads/macos/).
-2. Run the installer and follow the installation steps.
-3. Alternatively, you can install Python using Homebrew:
-    ```sh
-    brew install python
-    ```
-
-**On Linux:**
-
-1. Use the package manager for your distribution to install Python. For example, on Ubuntu:
-    ```sh
-    sudo apt update
-    sudo apt install python3 python3-venv python3-pip
-    ```
-
-#### Installing Graphviz
-
-**On Windows:**
-
-1. Download Graphviz from the official website: [Graphviz Downloads](https://graphviz.org/download/).
-2. Run the installer and follow the installation steps.
-3. Add Graphviz to your system PATH (usually, the installer does this automatically).
-
-**On macOS:**
-
-1. Install Graphviz using Homebrew:
-    ```sh
-    brew install graphviz
-    ```
-
-**On Linux:**
-
-1. Use the package manager for your distribution to install Graphviz. For example, on Ubuntu:
-    ```sh
-    sudo apt update
-    sudo apt install graphviz
-    ```
-
-
-#### Installing Git
-
-**On Windows:**
-
-1. Download Git from the official website: [Git for Windows](https://gitforwindows.org/).
-2. Run the installer and follow the installation steps.
-
-**On macOS:**
-
-1. Install Git using Homebrew:
-    ```sh
-    brew install git
-    ```
-
-**On Linux:**
-
-1. Use the package manager for your distribution to install Git. For example, on Ubuntu:
-    ```sh
-    sudo apt update
-    sudo apt install git
-    ```
-
-### Setting Up the Project
-
-1. **Clone the Repository**:
-    ```sh
-    git clone https://github.com/LukasMadsenBrandt/gene_analysis_dashboard.git
-    cd gene_analysis_dashboard
-    ```
-
-2. **Create and Activate Virtual Environment**:
-
-    **On Unix-like systems (Linux/macOS)**:
-    ```sh
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
-
-    **On Windows**:
-    ```cmd
-    python -m venv venv
-    venv\Scripts\activate
-    ```
-
-3. **Install Dependencies**:
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-4. **Run the Application**:
-    ```sh
-    python app.py
-    ```
-
-## Directory Structure
 ```sh
-gene_analysis_dashboard/
-├── app.py
-├── Data/
-│   ├── Benito/
-│   │   ├── Benito_Gorilla
-│   │   ├── Benito_Human
-│   │   ├── gene_id_to_gene_name.txt
-│   │   ├── gene_names.txt
-│   │   └── map_speciment_to_gene.csv
-│   └── Kutsche/
-│       ├── genes.txt
-│       ├── gene_names.txt
-│       ├── Kutsche_Counts.txt
-│       └── search_genes.sh
-├── gene_analysis_benito/
-│   ├── config.py
-│   ├── data_filtering.py
-│   ├── data_preprocessing.py
-│   ├── decorators.py
-│   ├── granger_causality.py
-
-├── gene_analysis_kutsche/
-│   ├── config.py
-│   ├── data_filtering.py
-│   ├── data_preprocessing.py
-│   ├── decorators.py
-│   ├── granger_causality.py
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Usage
+Run the deterministic 1000-gene guided-flow sample:
 
-1. **Select the dataset and summarization technique**.
-2. **Press "Send" to generate the graph**.
-3. **Use the community detection options and other controls to customize the graph**.
+```sh
+python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.sample.yml
+```
 
-## Contributing
+Run the smaller sample that performs real statsmodels GC calculations:
 
-Contributions are welcome. Please submit a pull request or open an issue to discuss the changes.
+```sh
+python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.real_gc_sample.yml
+```
 
-## License
+Run production-style configs:
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+```sh
+python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.kutsche.yml
+python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.benito_human.yml
+python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.benito_gorilla.yml
+```
 
+Run verification:
+
+```sh
+python3 -m pytest tests
+```
+
+## What Gets Produced
+
+| Stage | Main outputs |
+| --- | --- |
+| Seed GC | Directed GC CSV for seed genes |
+| Seed consensus | Seed network files, GOI coassociation CSV, consensus history |
+| Probe selection | Probe gene list chosen from seed coassociation frequencies |
+| Dataset probe | Bidirectional GC CSV between probe genes and full dataset |
+| Expanded genes | Probe network files and discovered candidate gene set `n` |
+| Expanded GC | Directed GC CSV for `n * (n - 1)` candidate pairs |
+| Expanded consensus | Final priority list, expanded network files, consensus history |
+
+Each run writes a folder under `results/pipeline/<run_name>/` with stage
+manifests, parameters, metrics, and network artifacts.
+
+## Documentation
+
+| Need | Read |
+| --- | --- |
+| Scientific idea and pipeline flow | [Pipeline concept](docs/PIPELINE_CONCEPT.md) |
+| Exact commands and resume examples | [Workflows](docs/WORKFLOWS.md) |
+| Stage inputs, outputs, metrics, networks | [Pipeline artifacts](docs/PIPELINE_ARTIFACTS.md) |
+| What belongs in Git vs local data/results | [Data and results](docs/DATA_AND_RESULTS.md) |
+| Developer checks and contribution workflow | [Development](docs/DEVELOPMENT.md) |
+| Historical exploratory scripts | [Legacy index](docs/LEGACY_INDEX.md) |
+
+## Repository Layout
+
+```text
+configs/                  YAML configs for sample and production-style runs
+docs/                     Concise project documentation
+examples/                 Small tracked fixtures
+gene_analysis/            Canonical pipeline and analysis package
+gene_analysis_benito/     Benito dataset helpers
+gene_analysis_kutsche/    Kutsche dataset helpers
+scripts/pipeline/         Supported command-line pipeline tools
+scripts/reporting/        Supported reporting utilities
+scripts/legacy/           Historical dashboards and exploratory scripts
+tests/                    Fast verification suite
+```
+
+Large expression matrices, full GC outputs, generated figures, logs, zip
+bundles, and pipeline results should stay local or externally linked rather
+than committed to GitHub.

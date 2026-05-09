@@ -1,0 +1,128 @@
+"""Legacy root entrypoint for exploratory Granger-causality runs."""
+
+import multiprocessing
+import os
+import sys
+
+from gene_analysis.io.paths import data_path, results_path
+
+#Kutsche
+from gene_analysis_kutsche.granger_causality import perform_granger_causality_tests as perform_gc_kutsche
+from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
+from gene_analysis_kutsche.granger_causality import save_results_to_csv as save_results_to_csv_kutsche
+from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data as load_and_preprocess_kutsche
+from gene_analysis_kutsche.data_filtering import preprocess_pipeline as preprocess_pipeline
+
+from gene_analysis_kutsche.granger_new import perform_gc as perform_gc
+
+
+
+from gene_analysis_kutsche.data_filtering import filter_data_wt as filter_wt_kutsche
+
+#Benito
+from gene_analysis_benito.granger_causality import perform_granger_causality_tests as perform_gc_benito
+from gene_analysis_benito.granger_causality import collect_significant_edges as collect_significant_edges_benito
+from gene_analysis_benito.data_preprocessing import filter_data_proximity_based_weights as filter_proximity_benito
+from gene_analysis_benito.data_preprocessing import filter_data_arithmetic_mean as filter_mean_benito
+from gene_analysis_benito.data_preprocessing import filter_data_median as filter_median_benito
+from gene_analysis_benito.data_filtering import filter_data as mapper_benito
+
+def main():
+    """Run the configured legacy Granger analysis branch."""
+    kutsche = True # Set to True for Kutsche data, False for Benito data
+    kutsche_explore = True # Set to True for Kutsche explore data
+    if kutsche_explore:
+        print("Loading and preprocessing data...")
+        df = load_and_preprocess_kutsche(data_path('Kutsche', 'Kutsche_Counts.txt'))
+        suffix = "00015"
+        gene_of_interest = "MECP2"
+        top_n = 115
+        df_filtered, raw_data, day_map = preprocess_pipeline(df, normalize=False, transformed=False, aggregation="robust")
+        
+        # 1 step
+        """
+        summary = new_perform_gc_kutsche(
+            df_filtered_wt_weighted_mean=df_filtered,
+            genes_file=data_path('Kutsche', 'unique_genes.txt'),
+            output_file=results_path("granger", f"granger_causality_results_1st_step_only_sig_{suffix}.csv"),
+            p_threshold=0.0015,             # <= only
+            chunk_size=1000000,  # Adjusted for larger datasets
+            max_workers=None,
+            pool_chunksize=64,
+            progress=True,
+            resume=True
+        )
+        """
+        # 1,5 step
+        """
+        summary = new_perform_gc_kutsche(
+            df_filtered_wt_weighted_mean=df_filtered,
+            genes_file=data_path('Kutsche', suffix, f'gene_names_{gene_of_interest}_{suffix}_{top_n}.txt'),
+            output_file=results_path("granger", f"granger_causality_results_1_5_step_only_sig_{gene_of_interest}_{suffix}_{top_n}.csv"),
+            p_threshold=0.0015,             # <= only
+            chunk_size=1000000,  # Adjusted for larger datasets
+            list_to_kutsche=True,
+            max_workers=None,
+            pool_chunksize=64,
+            progress=True,
+            resume=True
+        )
+        
+        # 2 step
+        """
+        summary = perform_gc(
+            df_filtered_wt_weighted_mean=df_filtered,
+            genes_file=data_path('Kutsche', suffix, f'network_genes_{suffix}_{gene_of_interest}.txt'),
+            output_file=results_path("granger", f"granger_causality_results_exploration_2nd_step_only_sig_{gene_of_interest}_{suffix}.csv"),
+            p_threshold=0.0015,             # <= only
+            chunk_size=1000000,  # Adjusted for larger datasets
+            max_workers=None,
+            pool_chunksize=64,
+            progress=True,
+            resume=True
+        )
+        
+        
+
+
+        print("Done:", summary)
+    elif kutsche:            
+        # Load and preprocess data
+        print("Loading and preprocessing data...")
+        df = load_and_preprocess_kutsche(data_path('Kutsche', 'Kutsche_Counts.txt'))
+        suffix = "0001"
+        print("Data loaded and preprocessed.")
+        df_filtered, raw_data, day_map = preprocess_pipeline(df, normalize=False, transformed=False , aggregation="robust")
+        print("Data filtered.")
+        print(df_filtered[:5])
+        #print 5 lines of the data
+        print(len(df_filtered))
+        #gc_results = perform_gc_kutsche(df_filtered, progress=True)
+        #gc_results = perform_granger_explore_new(df_filtered, progress=True, filepath=data_path('Kutsche', f'gene_names_{suffix}.txt'))
+        #gc_results = perform_gc_kutsche(df_filtered, progress=True, genes_file=data_path('Kutsche', f'explore_genes_{suffix}.txt'))
+        
+        print("Granger causality tests performed.")
+
+        # Save results
+        save_results_to_csv_kutsche(gc_results, results_path("granger", f"granger_causality_results_exploration_{suffix}.csv"))
+    else:
+        df_human = mapper_benito(
+            datafile=data_path('Benito', 'Benito_Human'),
+            mappingfile=data_path('Benito', 'gene_id_to_gene_name.txt'),
+            map_speciment_to_gene_file=data_path('Benito', 'map_speciment_to_gene.csv')
+            )
+        print("Data loaded and preprocessed.")
+        filter_function, _, _ = filter_proximity_benito(df_human)
+        print("Performing Granger causality tests...")
+        gc_results = perform_gc_benito(filter_function, genes_file=data_path('Benito', 'unique_genes.txt'), progress=True)
+        print("Granger causality tests performed.")
+
+        save_results_to_csv_kutsche(gc_results, results_path("granger", "granger_causality_results_truncated_benito_human.csv"))
+        
+
+
+if __name__ == '__main__':
+    abspath = os.path.abspath(__file__)
+    dname = os.path.dirname(abspath)
+    os.chdir(dname)
+    main()

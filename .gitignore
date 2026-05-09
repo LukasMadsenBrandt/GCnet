@@ -158,7 +158,55 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+.vscode/
 __pycache__/
 *.pyc
 cache/
 plots/
+
+# Local scratch notes.
+Analsis_steps.txt
+note_for_*.txt
+
+# Generated tabular outputs are ignored by default. Keep small fixtures.
+*.csv
+!examples/**/*.csv
+!configs/**/*.csv
+
+# Real datasets stay local; only small reference files are tracked.
+/Data/*
+!/Data/Kutsche/
+/Data/Kutsche/*
+!/Data/Kutsche/genes_all.txt
+!/Data/Kutsche/unique_genes.txt
+!/Data/Benito/
+/Data/Benito/*
+!/Data/Benito/unique_genes.txt
+!/Data/Benito/gene_id_to_gene_name.txt
+!/Data/Benito/map_speciment_to_gene.csv
+
+# Generated analysis outputs live under results/ by convention.
+results/**
+!results/
+!results/MIGRATION.md
+
+# Historical/generated analysis folders.
+/network/
+/degree_outputs/
+/Final_Figures_SM/
+/Steiner_Figures/
+/ManuscriptBioinf/
+/MECP2/
+/005_benito_human/
+/list_top5_2nd_explore_MECP2_ZEB2/
+
+# Logs, archives, and generated exports.
+logs/
+*.log
+*.zip
+*.svg
+*.html
+*.cys
+*.sif
+*.old
+.~lock.*

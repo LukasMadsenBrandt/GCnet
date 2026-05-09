@@ -1,0 +1,31 @@
+run_name: mecp2_benito_gorilla_00015
+
+dataset:
+  name: benito_gorilla
+  expression_file: Data/Benito/Benito_Gorilla
+  full_gene_file: Data/Benito/unique_genes.txt
+
+gene_of_interest: MECP2
+seed_gene_file: Data/Benito/unique_genes.txt
+
+network:
+  p_value_threshold: 0.01
+
+consensus:
+  initial_runs: 5000
+  run_increment_fraction: 0.20
+  stability_quantile: 0.90
+  stability_tolerance: 0.05
+  top_overlap_threshold_percent: 95.0
+
+probe_selection:
+  mode: top_percent
+  top_percent: 5.0
+  min_frequency: null
+
+execution:
+  max_workers: null
+  chunk_size: 1000000
+  resume: true
+
+artifacts: {}
