@@ -199,6 +199,7 @@ results/**
 /MECP2/
 /005_benito_human/
 /list_top5_2nd_explore_MECP2_ZEB2/
+/noise/tsv/
 
 # Logs, archives, and generated exports.
 logs/
