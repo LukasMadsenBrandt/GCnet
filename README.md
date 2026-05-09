@@ -1,9 +1,9 @@
-# Gene Analysis Dashboard
+# Gene Analysis Pipeline
 
 Guided neurodeficiency gene-expansion pipeline using Granger causality,
 network construction, stability-controlled Louvain consensus, and ranked
-candidate gene lists. The repository also includes a Dash dashboard for
-interactive network exploration.
+candidate gene lists. Historical dashboard and exploratory scripts are kept
+under `scripts/legacy/`, but the YAML pipeline runner is the main application.
 
 The pipeline is intentionally not brute-force all-pairs discovery first. It
 starts from a curated seed gene set, finds directed GC relationships inside that
@@ -82,7 +82,7 @@ gene_analysis_benito/     Benito dataset helpers
 gene_analysis_kutsche/    Kutsche dataset helpers
 scripts/pipeline/         Supported command-line pipeline tools
 scripts/reporting/        Supported reporting utilities
-scripts/legacy/           Historical exploratory scripts
+scripts/legacy/           Historical dashboards and exploratory scripts
 tests/                    Fast verification suite
 ```
 

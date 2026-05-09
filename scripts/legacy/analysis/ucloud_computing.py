@@ -15,7 +15,7 @@ import numpy as np
 import os
 
 from gene_analysis_common.network import create_network
-from project_paths import results_path
+from gene_analysis.io.paths import results_path
 from gene_analysis_benito.granger_causality import filter_gene_pairs as filter_gene_pairs_benito
 from gene_analysis_benito.granger_causality import collect_significant_edges as collect_significant_edges_benito
 

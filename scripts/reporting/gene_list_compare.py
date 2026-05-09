@@ -23,7 +23,7 @@ from typing import List, Set
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from project_paths import data_path, resolve_existing_path, results_path
+from gene_analysis.io.paths import data_path, resolve_existing_path, results_path
 
 # ===========================
 # ========= CONFIG ==========

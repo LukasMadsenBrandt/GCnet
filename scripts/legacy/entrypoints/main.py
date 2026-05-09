@@ -4,7 +4,7 @@ import multiprocessing
 import os
 import sys
 
-from project_paths import data_path, results_path
+from gene_analysis.io.paths import data_path, results_path
 
 #Kutsche
 from gene_analysis_kutsche.granger_causality import perform_granger_causality_tests as perform_gc_kutsche

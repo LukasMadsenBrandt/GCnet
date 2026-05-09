@@ -20,4 +20,4 @@ Generated root-level outputs were moved under `results/` so the repository root 
 - `results/pipeline/<run_name>/06_expanded_gc/`: GC outputs among expanded candidate genes.
 - `results/pipeline/<run_name>/07_expanded_consensus/`: Final stable priority lists for biological follow-up.
 
-Code should use `project_paths.resolve_existing_path()` for configured inputs during the migration period. That resolver keeps old filename-only references working by searching the categorized `results/` folders.
+Code should use `gene_analysis.io.paths.resolve_existing_path()` for configured inputs during the migration period. That resolver keeps old filename-only references working by searching the categorized `results/` folders.

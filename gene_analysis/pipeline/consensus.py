@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from gene_analysis.analysis.granger import collect_significant_edges
 from gene_analysis.analysis.network import create_network
 from gene_analysis.pipeline.config import ConsensusConfig
-from relative_difference_utils import GeneStabilityConfig, compute_csv_stability_metrics
+from gene_analysis.analysis.stability import GeneStabilityConfig, compute_csv_stability_metrics
 from gene_analysis.analysis.consensus_backend import (
     consensus_partition,
     save_gene_frequencies_to_csv,

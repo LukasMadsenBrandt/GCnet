@@ -39,7 +39,9 @@ The canonical consensus flow now lives in the YAML pipeline runner.
 - standalone Dash experiments
 - exploratory plotting scripts
 
-The supported dashboard entrypoint remains `app.py`.
+The old network exploration dashboard is preserved as
+`scripts/legacy/dashboard_apps/app.py`. It is not the primary project
+entrypoint; new analysis runs should use the YAML pipeline runner.
 
 ## Old Entrypoints And Maintenance
 

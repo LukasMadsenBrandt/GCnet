@@ -35,6 +35,17 @@ python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.benito_
 python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.benito_gorilla.yml
 ```
 
+These production-style configs require the real datasets to be present locally:
+
+- `Data/Kutsche/Kutsche_Counts.txt`
+- `Data/Benito/Benito_Human`
+- `Data/Benito/Benito_Gorilla`
+- `Data/Benito/gene_id_to_gene_name.txt`
+
+The repository tracks the small gene lists and metadata, but not the large
+expression matrices. Use the example configs below when working from a fresh
+clone without local data.
+
 All three produce intermediate seed, probe, and expanded network artifacts
 under `results/pipeline/<run_name>/`.
 
@@ -139,10 +150,15 @@ python3 scripts/pipeline/consensus.py \
 Use canonical `scripts/...` paths for pipeline and reporting helpers:
 
 ```sh
-python3 app.py
 python3 scripts/pipeline/thresholding.py <gc-results.csv>
 python3 scripts/reporting/gene_list_compare.py
 python3 scripts/reporting/relative_difference.py
+```
+
+The old Dash network exploration app is preserved for reference:
+
+```sh
+python3 scripts/legacy/dashboard_apps/app.py
 ```
 
 Old root-level commands were moved to `scripts/legacy/entrypoints/` for

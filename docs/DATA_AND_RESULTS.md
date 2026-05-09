@@ -8,6 +8,12 @@ The GitHub repository should stay lean and clone-friendly.
 - Tests
 - Documentation
 - Tiny example fixtures
+- Small reference gene lists and metadata:
+  - `Data/Kutsche/genes_all.txt`
+  - `Data/Kutsche/unique_genes.txt`
+  - `Data/Benito/unique_genes.txt`
+  - `Data/Benito/gene_id_to_gene_name.txt`
+  - `Data/Benito/map_speciment_to_gene.csv`
 - `results/MIGRATION.md`
 
 ## Not Tracked
@@ -23,6 +29,17 @@ The GitHub repository should stay lean and clone-friendly.
 
 Place real datasets under `Data/` using the existing Kutsche and Benito folder conventions. Generated outputs should go under `results/`.
 
+The production pipeline configs require these local-only expression matrices to
+exist at the configured paths:
+
+- `Data/Kutsche/Kutsche_Counts.txt`
+- `Data/Benito/Benito_Human`
+- `Data/Benito/Benito_Gorilla`
+
+These files are not committed to GitHub, so a fresh clone can run the example
+fixtures immediately but cannot run the production Kutsche/Benito configs until
+the real datasets have been placed in the correct folders.
+
 Production configs currently expect these local resources:
 
 - `Data/Kutsche/Kutsche_Counts.txt`
@@ -33,6 +50,9 @@ Production configs currently expect these local resources:
 - `Data/Benito/unique_genes.txt`
 - `Data/Benito/gene_id_to_gene_name.txt`
 - `Data/Benito/map_speciment_to_gene.csv`
+
+Of these, the small gene lists, gene-id mapping, and specimen metadata are
+tracked. The three local-only expression matrices listed above stay local.
 
 Small fixtures under `examples/` are intended to be tracked and used in tests.
 

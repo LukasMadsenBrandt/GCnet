@@ -14,7 +14,7 @@ from pathlib import Path
 from statsmodels.tsa.stattools import grangercausalitytests
 
 from gene_analysis_kutsche.decorators import timing_decorator
-from project_paths import resolve_existing_path
+from gene_analysis.io.paths import resolve_existing_path
 
 
 warnings.simplefilter(action="ignore", category=FutureWarning)

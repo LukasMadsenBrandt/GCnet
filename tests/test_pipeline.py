@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import project_paths
+import gene_analysis.io.paths as paths
 from gene_analysis.pipeline.config import DatasetConfig, ExpansionConfig, NetworkConfig, ProbeConfig, SeedGeneConfig
 from gene_analysis.pipeline.dataset_probe import generate_probe_pairs, run as run_probe
 from gene_analysis.pipeline.network_expansion import extract_expanded_genes_from_csv, run as run_expansion
@@ -219,7 +219,7 @@ def test_probe_selection_rejects_dual_mode_config():
 
 
 def test_runner_fails_clearly_when_starting_without_required_artifact(tmp_path, monkeypatch):
-    monkeypatch.setattr(project_paths, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
     cfg = make_pipeline_config(tmp_path, run_name="missing_artifact")
     runner = PipelineRunner(cfg)
 
@@ -228,7 +228,7 @@ def test_runner_fails_clearly_when_starting_without_required_artifact(tmp_path, 
 
 
 def test_runner_stage_03_from_configured_artifact(tmp_path, monkeypatch):
-    monkeypatch.setattr(project_paths, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
     frequency_csv = tmp_path / "seed_frequency.csv"
     frequency_csv.write_text("Gene,Coassociation Frequency\nA,0.9\nB,0.2\n", encoding="utf-8")
     cfg = make_pipeline_config(
@@ -246,7 +246,7 @@ def test_runner_stage_03_from_configured_artifact(tmp_path, monkeypatch):
 
 
 def test_runner_stage_05_from_configured_artifact(tmp_path, monkeypatch):
-    monkeypatch.setattr(project_paths, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
     probe_gc = tmp_path / "probe_gc.csv"
     probe_gc.write_text(
         "gene1,gene2,lag,p-value\nZEB2,A,1,0.001\nB,ZEB2,1,0.002\nZEB2,C,1,0.2\n",
@@ -262,7 +262,7 @@ def test_runner_stage_05_from_configured_artifact(tmp_path, monkeypatch):
 
 
 def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
-    monkeypatch.setattr(project_paths, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
     cfg = PipelineConfig.from_yaml("configs/gene_expansion.sample.yml")
 
     artifacts = PipelineRunner(cfg).run()
@@ -316,7 +316,7 @@ def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
 
 
 def test_sample_real_gc_pipeline_runs_all_stages(tmp_path, monkeypatch):
-    monkeypatch.setattr(project_paths, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
     cfg = PipelineConfig.from_yaml("configs/gene_expansion.real_gc_sample.yml")
 
     artifacts = PipelineRunner(cfg).run()

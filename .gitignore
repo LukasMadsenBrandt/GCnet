@@ -173,8 +173,17 @@ note_for_*.txt
 !examples/**/*.csv
 !configs/**/*.csv
 
-# Real datasets stay local; examples carry the Git-tracked fixtures.
-/Data/
+# Real datasets stay local; only small reference files are tracked.
+/Data/*
+!/Data/Kutsche/
+/Data/Kutsche/*
+!/Data/Kutsche/genes_all.txt
+!/Data/Kutsche/unique_genes.txt
+!/Data/Benito/
+/Data/Benito/*
+!/Data/Benito/unique_genes.txt
+!/Data/Benito/gene_id_to_gene_name.txt
+!/Data/Benito/map_speciment_to_gene.csv
 
 # Generated analysis outputs live under results/ by convention.
 results/**

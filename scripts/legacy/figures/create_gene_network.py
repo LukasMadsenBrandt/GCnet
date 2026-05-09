@@ -26,7 +26,7 @@ from app import (
     create_graphviz_dot,
     consensus_partition
 )
-from project_paths import data_path, resolve_existing_path, results_path
+from gene_analysis.io.paths import data_path, resolve_existing_path, results_path
 
 def assign_colors(partition, primary_gene="ZEB2"):
     """Assign display colors to Louvain/consensus community ids."""

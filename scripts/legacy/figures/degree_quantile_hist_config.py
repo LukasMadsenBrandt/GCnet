@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 import pandas as pd
 
-from project_paths import resolve_existing_path, results_path
+from gene_analysis.io.paths import resolve_existing_path, results_path
 
 
 # =========================

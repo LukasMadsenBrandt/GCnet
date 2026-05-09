@@ -30,8 +30,8 @@ import os
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 
-from relative_difference_utils import GeneStabilityConfig, compute_csv_stability_metrics
-from project_paths import results_path
+from gene_analysis.analysis.stability import GeneStabilityConfig, compute_csv_stability_metrics
+from gene_analysis.io.paths import results_path
 
 
 @dataclass(frozen=True)
