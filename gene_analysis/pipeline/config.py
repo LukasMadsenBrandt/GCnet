@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from gene_analysis.io.paths import results_path
+from gene_analysis.analysis.backends import validate_backend_settings
 from gene_analysis.pipeline.probe_selection import ProbeSelectionConfig
 
 
@@ -117,15 +118,45 @@ class DatasetConfig:
 
 
 @dataclass(frozen=True)
-class NetworkConfig:
-    """Network threshold settings shared by seed and expanded stages."""
+class PreprocessingConfig:
+    """Expression preprocessing settings shared by all dataset loaders."""
 
-    p_value_threshold: float = 0.05
+    normalize: str = "none"
+    transform: str = "none"
+    aggregation: str = "robust"
 
     def validate(self) -> None:
-        """Raise ``ValueError`` when the p-value threshold is outside ``(0, 1]``."""
+        """Raise ``ValueError`` when preprocessing settings are unsupported."""
+        normalize = str(self.normalize).lower()
+        transform = str(self.transform).lower()
+        aggregation = str(self.aggregation).lower()
+        if normalize not in {"none", "deseq", "deseq2", "size_factors", "zscore", "z-score"}:
+            raise ValueError("preprocessing.normalize must be one of: none, deseq, zscore.")
+        if transform not in {"none", "log1p", "log+1", "sqrt"}:
+            raise ValueError("preprocessing.transform must be one of: none, log1p, sqrt.")
+        if aggregation not in {"robust", "mean", "median"}:
+            raise ValueError("preprocessing.aggregation must be one of: robust, mean, median.")
+
+
+@dataclass(frozen=True)
+class NetworkConfig:
+    """Network threshold and optional visual-preview settings."""
+
+    p_value_threshold: float = 0.05
+    write_svg: bool = True
+    svg_renderer: str = "networkx"
+    svg_layout: str = "dot"
+
+    def validate(self) -> None:
+        """Raise ``ValueError`` when network settings are invalid."""
         if not 0 < float(self.p_value_threshold) <= 1:
             raise ValueError("network.p_value_threshold must be in (0, 1].")
+        if not isinstance(self.write_svg, bool):
+            raise ValueError("network.write_svg must be true or false.")
+        if str(self.svg_renderer).lower() not in {"networkx", "graphviz"}:
+            raise ValueError("network.svg_renderer must be 'networkx' or 'graphviz'.")
+        if str(self.svg_layout).lower() not in {"dot", "neato", "fdp", "sfdp", "circo", "twopi"}:
+            raise ValueError("network.svg_layout must be one of: dot, neato, fdp, sfdp, circo, twopi.")
 
 
 @dataclass(frozen=True)
@@ -159,6 +190,9 @@ class ExecutionConfig:
     max_workers: Optional[int] = None
     chunk_size: int = 1_000_000
     resume: bool = True
+    gc_backend: str = "cpu_statsmodels"
+    consensus_backend: str = "cpu_louvain"
+    gpu_device: Optional[int] = None
 
     def validate(self) -> None:
         """Raise ``ValueError`` when worker or chunk-size settings are invalid."""
@@ -166,3 +200,6 @@ class ExecutionConfig:
             raise ValueError("execution.max_workers must be at least 1 when set.")
         if int(self.chunk_size) < 1:
             raise ValueError("execution.chunk_size must be at least 1.")
+        if self.gpu_device is not None and int(self.gpu_device) < 0:
+            raise ValueError("execution.gpu_device must be non-negative when set.")
+        validate_backend_settings(self.gc_backend, self.consensus_backend)

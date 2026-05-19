@@ -1,0 +1,6 @@
+[project]
+name = "gene-analysis-pipeline"
+version = "0.1.0"
+description = "Guided neurodeficiency gene-expansion pipeline using Granger causality and consensus networks."
+requires-python = ">=3.11,<3.12"
+readme = "README.md"

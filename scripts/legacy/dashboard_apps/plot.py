@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import numpy as np
-from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data as load_and_preprocess_kutsche
-from gene_analysis_kutsche.data_filtering import preprocess_pipeline as preprocess_pipeline
+from gene_analysis.datasets.kutsche import load_and_preprocess_data as load_and_preprocess_kutsche
+from gene_analysis.datasets.kutsche import preprocess_pipeline as preprocess_pipeline
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
@@ -57,7 +57,7 @@ html.Div("Choose colors for time series plots here", style={'marginBottom': '20p
     html.Div(style={'display': 'flex', 'justifyContent': 'center', 'marginTop': '20px'}, children=[
         html.Button("Download as HTML", id="download-html-btn", style={'marginRight': '10px', 'fontSize': '120%'}),
         dcc.Download(id="download-html"),
-        
+
         html.Button("Download as SVG", id="download-svg-btn", style={'marginLeft': '10px', 'fontSize': '120%'}),
         dcc.Download(id="download-svg")
     ])

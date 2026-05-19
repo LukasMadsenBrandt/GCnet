@@ -5,7 +5,7 @@ are not the supported pipeline interface. Many still contain hardcoded filenames
 from earlier analyses. New work should use:
 
 ```sh
-python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.kutsche.yml
+python3 scripts/pipeline/run_pipeline.py --config configs/production/gene_expansion.kutsche.yml
 ```
 
 ## Network Exploration
@@ -51,3 +51,13 @@ entrypoint; new analysis runs should use the YAML pipeline runner.
 - historical GC gathering and maintenance helpers
 
 Production-style runs should now use the dataset YAML configs in `configs/`.
+
+## Legacy Benito Helpers
+
+`scripts/legacy/benito/`
+
+- old Benito mapping and preprocessing helpers used by historical scripts
+- includes the historical forced-log preprocessing behavior
+
+The canonical Benito pipeline now uses `gene_analysis.datasets.benito` through
+the YAML runner so preprocessing can be configured per run.

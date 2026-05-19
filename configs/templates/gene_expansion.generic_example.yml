@@ -1,0 +1,42 @@
+run_name: my_generic_dataset
+
+dataset:
+  name: generic_expression
+  expression_file: Data/MyDataset/expression.csv
+  full_gene_file: Data/MyDataset/genes_all.txt
+
+gene_of_interest: ZEB2
+seed_gene_file: Data/MyDataset/seed_genes.txt
+
+preprocessing:
+  normalize: none      # none | deseq | zscore
+  transform: log1p     # none | log1p | sqrt
+  aggregation: robust  # ignored by generic_expression matrices
+
+network:
+  p_value_threshold: 0.0015
+  write_svg: true
+  svg_renderer: networkx
+  svg_layout: dot
+
+consensus:
+  initial_runs: 50
+  run_increment_fraction: 0.20
+  stability_quantile: 0.50
+  stability_tolerance: 0.05
+  top_overlap_threshold_percent: 50.0
+
+probe_selection:
+  mode: top_percent
+  top_percent: 5.0
+  min_frequency: null
+
+execution:
+  max_workers: null
+  chunk_size: 1000000
+  resume: true
+  gc_backend: cpu_statsmodels
+  consensus_backend: cpu_louvain
+  gpu_device: null
+
+artifacts: {}

@@ -190,6 +190,12 @@ results/**
 !results/
 !results/MIGRATION.md
 
+# Generated HPC/job helper outputs.
+scripts/pipeline/slurm_jobs/
+slurm-*.out
+slurm-*.err
+cuda_compatibility*.json
+
 # Historical/generated analysis folders.
 /network/
 /degree_outputs/
@@ -200,6 +206,7 @@ results/**
 /005_benito_human/
 /list_top5_2nd_explore_MECP2_ZEB2/
 /noise/tsv/
+/BASE_*/
 
 # Logs, archives, and generated exports.
 logs/

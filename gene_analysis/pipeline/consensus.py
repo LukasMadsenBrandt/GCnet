@@ -14,9 +14,11 @@ from gene_analysis.pipeline.config import ConsensusConfig
 from gene_analysis.analysis.stability import GeneStabilityConfig, compute_csv_stability_metrics
 from gene_analysis.analysis.consensus_backend import (
     consensus_partition,
+    get_last_consensus_profile,
     save_gene_frequencies_to_csv,
     setup_logging,
 )
+from gene_analysis.analysis.backends import backend_metadata, require_available_backend
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,8 @@ def run_stable_consensus(
     stability_quantile: float,
     top_overlap_threshold_percent: float,
     max_workers: int | None = None,
+    backend: str = "cpu_louvain",
+    gpu_device: int | None = None,
 ) -> StableConsensusResult:
     """
     Run Louvain consensus until CSV stability criteria are reached.
@@ -110,6 +114,7 @@ def run_stable_consensus(
     can call it consistently for both seed and expanded GC results.
     """
     config.validate()
+    require_available_backend("consensus", backend, device=gpu_device)
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     setup_logging(log_file=str(output_dir / "consensus.log"))
@@ -148,7 +153,10 @@ def run_stable_consensus(
             coassoc_state=coassoc_state,
             n_threads=workers,
             n_louvain_workers=workers,
+            backend=backend,
+            gpu_device=gpu_device,
         )
+        profile = get_last_consensus_profile()
         save_gene_frequencies_to_csv(
             nodes,
             coassoc,
@@ -170,6 +178,7 @@ def run_stable_consensus(
         iteration_metrics = {
             "runs": current_runs,
             "frequency_csv": str(current_freq_csv_path),
+            "backend": backend,
             "stability_quantile_relative_change": q_rel,
             "top_gene_overlap_percent": overlap_pct,
             "top_gene_overlap_k": top_k,
@@ -179,6 +188,7 @@ def run_stable_consensus(
                 and overlap_pct >= top_overlap_threshold_percent
             ),
             "unique_genes_ever_with_goi_louvain": unique_goi_genes,
+            **profile,
             **_partition_metrics(partitions, config.gene_of_interest),
             **_consensus_metrics(consensus, config.gene_of_interest),
         }
@@ -191,6 +201,8 @@ def run_stable_consensus(
                 "stability_tolerance": config.stability_tolerance,
                 "stability_quantile": stability_quantile,
                 "top_overlap_threshold_percent": top_overlap_threshold_percent,
+                "backend": backend,
+                "backend_metadata": backend_metadata("consensus", backend, device=gpu_device).to_dict(),
                 **{key: value for key, value in iteration_metrics.items() if key not in {"frequency_csv", "stable"}},
             }
             return StableConsensusResult(output_dir, current_freq_csv_path, current_runs, True, metrics, history)

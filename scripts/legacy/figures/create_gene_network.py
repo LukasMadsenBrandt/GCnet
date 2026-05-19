@@ -129,7 +129,7 @@ def visualize_gene_network(
             gene_list = [line.strip() for line in f if line.strip()]
     else:
         all_connections = False
-    
+
     G = build_gene_network(gene_list, csv_file, p_threshold, all_connections=all_connections)
 
     if mst:
@@ -151,7 +151,7 @@ def visualize_gene_network(
 
 
     community_colors = assign_colors(partition, primary_gene=goi)
-    
+
 
     # Render DOT
     dot = create_graphviz_dot(
@@ -233,7 +233,7 @@ if __name__ == "__main__":
         "pad": "0.2",  # extra whitespace around the entire drawing
         'outputorder': 'edgesfirst',
         #"splines": "true",
-        
+
     }
     if (False):
         csv_path = f"granger_causality_results_truncated.csv"
@@ -250,7 +250,7 @@ if __name__ == "__main__":
         csv_path = "granger_causality_results_truncated.csv"
         #csv_path = f"granger_causality_results_explore_top5_{string_pvalue_threshold}.csv"
         #csv_path = f"granger_results_p00005_26295of26806506.csv"
-        #csv_path = f"granger_results_p0001_134186of88877756.csv" 
+        #csv_path = f"granger_results_p0001_134186of88877756.csv"
 
 
     output_path = results_path("figures", consensus_step, string_pvalue_threshold, f"{number_of_genes} genes", f"network_{goi}_{string_pvalue_threshold}_{number_of_genes}_{layout}_3")

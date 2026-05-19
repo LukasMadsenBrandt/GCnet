@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from gene_analysis_common.network import create_network
-from gene_analysis_kutsche.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
-from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
+from gene_analysis_common.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
+from gene_analysis_common.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
 import os
 import networkx as nx
 import math

@@ -37,19 +37,19 @@ import warnings
 
 
 # Importing functions from both folders
-from gene_analysis_benito.granger_causality import perform_granger_causality_tests as perform_gc_benito
-from gene_analysis_benito.granger_causality import filter_gene_pairs as filter_gene_pairs_benito
-from gene_analysis_benito.granger_causality import collect_significant_edges as collect_significant_edges_benito
-from gene_analysis_benito.data_preprocessing import filter_data_proximity_based_weights as filter_proximity_benito
-from gene_analysis_benito.data_preprocessing import filter_data_arithmetic_mean as filter_mean_benito
-from gene_analysis_benito.data_preprocessing import filter_data_median as filter_median_benito
-from gene_analysis_benito.data_filtering import filter_data as mapper_benito
+from gene_analysis_common.granger_causality import perform_granger_causality_tests as perform_gc_benito
+from gene_analysis_common.granger_causality import filter_gene_pairs as filter_gene_pairs_benito
+from gene_analysis_common.granger_causality import collect_significant_edges as collect_significant_edges_benito
+from scripts.legacy.benito.data_preprocessing import filter_data_proximity_based_weights as filter_proximity_benito
+from scripts.legacy.benito.data_preprocessing import filter_data_arithmetic_mean as filter_mean_benito
+from scripts.legacy.benito.data_preprocessing import filter_data_median as filter_median_benito
+from scripts.legacy.benito.data_filtering import filter_data as mapper_benito
 
-from gene_analysis_kutsche.granger_causality import perform_granger_causality_tests as perform_gc_kutsche
-from gene_analysis_kutsche.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
-from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
-from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data as load_and_preprocess_kutsche
-from gene_analysis_kutsche.data_filtering import preprocess_pipeline as preprocess_pipeline
+from gene_analysis_common.granger_causality import perform_granger_causality_tests as perform_gc_kutsche
+from gene_analysis_common.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
+from gene_analysis_common.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
+from gene_analysis.datasets.kutsche import load_and_preprocess_data as load_and_preprocess_kutsche
+from gene_analysis.datasets.kutsche import preprocess_pipeline as preprocess_pipeline
 from gene_analysis_common.network import create_network
 
 
@@ -226,14 +226,14 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
     """Run repeated Louvain consensus and optional plotting for a graph."""
     partitions = run_multiple_louvain_parallel(G, n_runs)
     nodes, coassoc = build_coassociation_matrix(G, partitions)
-    
+
     #plot = True
     # If n_clusters is not provided, compute it as the average number of communities over all partitions.
     if n_clusters is None:
         total_communities = sum(len(set(partition.values())) for partition in partitions)
         avg_communities = total_communities / len(partitions)
         n_clusters = int(round(avg_communities))
-    
+
     # Convert coassociation to a distance matrix (1 - coassociation)
     distance_matrix = 1 - coassoc
     clustering = AgglomerativeClustering(
@@ -243,7 +243,7 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
     )
     labels = clustering.fit_predict(distance_matrix)
     consensus = {node: labels[i] for i, node in enumerate(nodes)}
-    
+
     # Compute the union of all genes that have ever been in the same community as gene_of_interest
     union_genes = set()
     if gene_of_interest is not None:
@@ -271,9 +271,9 @@ import plotly.io as pio
 
 def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_dir):
     """
-    Plot an interactive scatter plot showing the coassociation frequency for each gene 
+    Plot an interactive scatter plot showing the coassociation frequency for each gene
     with respect to the gene_of_interest, based on the coassociation matrix.
-    
+
     Parameters:
         coassoc (np.ndarray): The coassociation matrix (assumed symmetric).
         nodes (list): List of gene names corresponding to the rows/columns of coassoc.
@@ -303,7 +303,7 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
     })
     # Remove the gene of interest itself.
     df = df[df['Gene'] != gene_of_interest]
-    
+
     # Create an interactive scatter plot using Plotly Express.
     fig = px.scatter(
         df,
@@ -312,7 +312,7 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
         hover_data={'Gene': True, 'Coassociation Frequency': ':.4f'},
         title=f'Coassociation Frequencies for Genes with {gene_of_interest}',
     )
-    
+
     # Remove x-axis tick labels since we don't need gene names there.
     fig.update_layout(
         xaxis=dict(
@@ -361,7 +361,7 @@ def apply_community_detection(G, method='louvain', num_communities=None):
 
         if num_communities and len(set(partition.values())) > num_communities:
             partition = reduce_communities(partition, num_communities)
-        
+
         debug_print(f"Number of detected communities: {len(set(partition.values()))}")
 
         debug_print("Community detection successful.")
@@ -377,14 +377,14 @@ def reduce_communities(partition, num_communities):
     """Merge community labels down to the requested number of groups."""
     community_counts = Counter(partition.values())
     most_common_communities = [community for community, _ in community_counts.most_common(num_communities)]
-    
+
     new_partition = {}
     for node, community in partition.items():
         if community in most_common_communities:
             new_partition[node] = community
         else:
             new_partition[node] = min(most_common_communities)
-    
+
     return new_partition
 
 
@@ -450,7 +450,7 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
             size = str(norm_outdegrees[idx])
         else:
             size = str(1)
-            
+
         if highlight_new_genes[0] and node not in highlight_new_genes[1]:
             color_hex = '#ff7f00'
 
@@ -463,7 +463,7 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
                 out_edges_info.append(f"{target}: ({kutsche_p_value:.6f})({benito_p_value:.6f})")
             else:
                 out_edges_info.append(f"{target}: ({data['p_value']:.6f})")
-        
+
         out_edges_info = ", ".join(out_edges_info)
         if any('kutsche_p_value' in data and 'benito_p_value' in data for _, _, data in out_edges):
             hover_text = html_escape.escape(
@@ -491,7 +491,7 @@ def create_graphviz_dot(G, partition, community_colors, highlight_node=None, lay
     p_values = [G[source][target].get('p_value', 1.0) for source, target in G.edges()]
     if weighted_edges == True:
         norm_p_values = normalize([-np.log10(p) for p in p_values], min_size=1, max_size=10)
-    else: 
+    else:
         norm_p_values = normalize([1 for p in p_values], min_size=3, max_size=3)
 
     for idx, (source, target) in enumerate(G.edges()):
@@ -593,7 +593,7 @@ def update_graph_function(significant_edges, selected_communities, search_value,
     """Build the dashboard graph HTML and community selector state."""
     # Create network from edges
     G = create_network(significant_edges)
-    
+
     if G.number_of_nodes() == 0:
         return None, [], "Graph is empty."
 
@@ -611,7 +611,7 @@ def update_graph_function(significant_edges, selected_communities, search_value,
     # Now, assign colors using the partition.
     partition_tuple = partition_to_tuple(partition)
     community_colors = cached_assign_colors(partition_tuple)
-    
+
     # Apply community filtering if the user selected a subset.
     if selected_communities:
         nodes_to_keep = {node for node, comm in partition.items() if comm in selected_communities}
@@ -629,7 +629,7 @@ def update_graph_function(significant_edges, selected_communities, search_value,
         {'label': html.Span(f'Community {comm}', style={'color': community_colors.get(comm, ("#000000",))[0]}),
          'value': comm} for comm in set(partition.values())
     ]
-    
+
     # Create the Graphviz DOT representation.
     dot = create_graphviz_dot(G, partition, community_colors, highlight_node=search_value, layout=layout)
     return dot, community_options, error_message
@@ -837,7 +837,7 @@ app.layout = html.Div([
             value='dot',
             style={'backgroundColor': 'white', 'color': 'black', 'marginBottom': '20px'}
         ),
-        
+
         html.Label('Community Detection Method:', style={'color': 'white'}),
         dcc.Dropdown(
             id='community-detection-method-dropdown',
@@ -871,7 +871,7 @@ app.layout = html.Div([
                 style={'color': 'white'}
             ),
         ], style={'maxHeight': '200px', 'overflowY': 'scroll'}),
-        
+
         html.Div(id='node-edge-info', style={'marginTop': '20px', 'color': 'white'}),
         html.Div(id='selections-output', style={'color': 'red'}),
         dbc.Button("Export Graph as HTML", id="export-html-button", color="success", style={'marginTop': '20px'}),
@@ -893,7 +893,7 @@ app.layout = html.Div([
             ]
         ),
         dcc.Download(id='download-graph-html')  # Add Download component
-    ])    
+    ])
 ], style={'padding': '20px', 'position': 'relative'})
 
 
@@ -1017,7 +1017,7 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
 
     cache_file = get_cache_filename(dataset, summarization_technique)
     cache_content = load_cache(cache_file)
-    
+
     if cache_content is not None:
         data_dict[summarization_technique], data_human = cache_content
         debug_print(f"Loaded {dataset} data ({summarization_technique}) from cache")
@@ -1097,8 +1097,8 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
         benito_df = pd.DataFrame(benito_edges, columns=['Gene1', 'Gene2', 'Lag', 'P_Value'])
 
         tf_genes_proximity = compare_datasets(kutsche_df, benito_df)
-    
-        
+
+
     else:
         tf_genes_proximity = data_dict[summarization_technique]
 
@@ -1128,7 +1128,7 @@ def send_selections(n_clicks, dataset, summarization_technique, community_detect
                                                               filepath=filtered_pairs,
                                                               starting_genes=genelist_global,
                                                               higher_threshold_for_starting_genes = pvalue_global)
-    
+
     elif dataset == 'large_benito_human':
         not_needed = None # Placeholder, as we read this from the file
         filtered_pairs = filter_gene_pairs_benito(filepath = "granger_causality_results_benito_Human.csv", p_threshold=pvalue_global, starting_genes=genelist_global, higher_threshold_for_starting_genes=pvalue_global)
@@ -1183,10 +1183,10 @@ def compute_heavy_network(apply_click,
     # Step 1: Compute significant edges (once)
     # ---------------------------
     if dataset == 'intersection':
-        kutsche_edges = (collect_significant_edges_kutsche(kutsche_data[summarization_technique], 
+        kutsche_edges = (collect_significant_edges_kutsche(kutsche_data[summarization_technique],
                                                             p_value_threshold=p_threshold)
                           if kutsche_data[summarization_technique] else [])
-        benito_edges = (collect_significant_edges_benito(benito_data[summarization_technique], 
+        benito_edges = (collect_significant_edges_benito(benito_data[summarization_technique],
                                                          p_value_threshold=p_threshold)
                         if benito_data[summarization_technique] else [])
         kutsche_edges = [(edge[0][0], edge[1][0], edge[0][1], edge[2]) for edge in kutsche_edges]
@@ -1195,10 +1195,10 @@ def compute_heavy_network(apply_click,
         benito_df = pd.DataFrame(benito_edges, columns=['Gene1', 'Gene2', 'Lag', 'P_Value'])
         significant_edges = compare_datasets(kutsche_df, benito_df)
     elif dataset == 'benito':
-        significant_edges = collect_significant_edges_benito(benito_data[summarization_technique], 
+        significant_edges = collect_significant_edges_benito(benito_data[summarization_technique],
                                                               p_value_threshold=p_threshold)
     elif dataset == 'kutsche':
-        significant_edges = collect_significant_edges_kutsche(kutsche_data[summarization_technique], 
+        significant_edges = collect_significant_edges_kutsche(kutsche_data[summarization_technique],
                                                                p_value_threshold=p_threshold)
     elif dataset == 'large_kutsche':
         filtered_pairs = filter_gene_pairs_kutsche(filepath="granger_causality_results.csv",
@@ -1254,7 +1254,7 @@ def compute_heavy_network(apply_click,
     significant_edges = set(significant_edges)
     #debug_print(f"Significant edges: {len(significant_edges)}")
     G = create_network(significant_edges)
-    
+
     debug_print(f"Genes{ len(G.nodes)}")
     debug_print(f"Edges: {len(G.edges)}")
 
@@ -1334,7 +1334,7 @@ def update_graph(heavy_data, apply_comm_clicks, selected_communities, layout, se
         return f"<p>Error loading graph data: {e}</p>"
     if not selected_communities:
         selected_communities = list(available_communities)
-    
+
     # (Optionally, update community colors if needed)
     partition_tuple = partition_to_tuple(partition)
     community_colors = cached_assign_colors(partition_tuple)
@@ -1501,7 +1501,7 @@ def plot_gene_expression(df_human, print_data=False):
     import plotly.tools as tls
     import matplotlib.pyplot as plt
     import numpy as np
-    
+
     """
     Plot gene expression data.
     """
@@ -1540,10 +1540,10 @@ def plot_gene_expression(df_human, print_data=False):
 
     plt.tight_layout(h_pad=2, rect=[0.03, 0.03, 1, 0.95])
     debug_print("Debug: Completed plot_gene_expression")
-    
+
     plotly_fig = tls.mpl_to_plotly(fig)
     graph = dcc.Graph(figure=plotly_fig)
-    
+
     return graph, plotly_fig  # Return both the plotly graph and the plotly figure
 
 def fig_to_plotly(fig):
@@ -1630,7 +1630,7 @@ def update_show_plots_button(search_value, dataset, summarization_technique, p_t
         return {'display': 'inline-block'}
     else:
         return {'display': 'none'}
-    
+
 @app.callback(
     Output('download-graph-html', 'data'),
     [Input('export-html-button', 'n_clicks')],
@@ -1657,7 +1657,7 @@ def sync_p_value(n_clicks, input_value):
 
     # Ensure input value stays within the slider range
     adjusted_value = min(max(input_value, 0.000001), 1)
-    
+
     return adjusted_value, adjusted_value
 
 
@@ -1667,7 +1667,7 @@ if __name__ == '__main__':
     abspath = os.path.abspath(__file__)
     dname = os.path.dirname(abspath)
     os.chdir(dname)
-    
+
     # Initialize data dictionaries for cache
     benito_data = {'proximity': None, 'mean': None, 'median': None}
     kutsche_data = {'proximity': None, 'mean': None, 'median': None}

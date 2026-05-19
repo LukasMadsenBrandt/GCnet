@@ -16,11 +16,11 @@ from sklearn.cluster import AgglomerativeClustering
 from community import community_louvain
 
 from gene_analysis_common.network import create_network
-from gene_analysis_benito.granger_causality import filter_gene_pairs as filter_gene_pairs_benito
-from gene_analysis_benito.granger_causality import collect_significant_edges as collect_significant_edges_benito
+from gene_analysis_common.granger_causality import filter_gene_pairs as filter_gene_pairs_benito
+from gene_analysis_common.granger_causality import collect_significant_edges as collect_significant_edges_benito
 
-from gene_analysis_kutsche.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
-from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
+from gene_analysis_common.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
+from gene_analysis_common.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
 
 from concurrent.futures import ProcessPoolExecutor
 
@@ -32,6 +32,11 @@ from typing import Dict, List, Tuple, Optional
 
 from gene_analysis.analysis.stability import GeneStabilityConfig, compute_csv_stability_metrics
 from gene_analysis.io.paths import results_path
+from gene_analysis.analysis.consensus_gpu import (
+    LOUVAIN_SEED_CONTROL,
+    build_coassociation_matrix_cupy,
+    run_multiple_louvain_cugraph,
+)
 
 
 @dataclass(frozen=True)
@@ -290,6 +295,12 @@ def setup_logging(log_file: str = "run.log", level=logging.INFO):
 logger = logging.getLogger(__name__)
 
 plots_dir = os.path.join(os.getcwd(), 'plots')
+_LAST_CONSENSUS_PROFILE = {}
+
+
+def get_last_consensus_profile() -> Dict[str, float]:
+    """Return timing/profile metadata from the most recent consensus run."""
+    return dict(_LAST_CONSENSUS_PROFILE)
 
 
 # ---------------------------------------------------------------------
@@ -369,7 +380,7 @@ def run_multiple_louvain_parallel(
     seeds = list(range(start_seed, n_runs))
 
     logger.info(
-        "Running Louvain %d→%d (adding %d runs) with %d worker(s)...",
+        "Running Louvain %d->%d (adding %d runs) with %d worker(s)...",
         start_seed, n_runs, n_new, n_workers
     )
     t0 = time.perf_counter()
@@ -521,6 +532,8 @@ def consensus_partition(
     coassoc_state=None,
     n_threads=None,
     n_louvain_workers=None,
+    backend="cpu_louvain",
+    gpu_device=None,
 ):
     """
     Compute consensus partition using Louvain + coassociation matrix.
@@ -535,23 +548,44 @@ def consensus_partition(
     t0_total = time.perf_counter()
 
     # Run Louvain multiple times on the undirected graph
-    partitions = run_multiple_louvain_parallel(
-        G_undirected,
-        n_runs=n_runs,
-        existing_partitions=existing_partitions,
-        n_workers=n_louvain_workers,
-        batch_per_worker=True,
-    )
+    t0_louvain = time.perf_counter()
+    if backend == "gpu_cugraph":
+        partitions = run_multiple_louvain_cugraph(
+            G_undirected,
+            n_runs=n_runs,
+            existing_partitions=existing_partitions,
+            gpu_device=gpu_device,
+        )
+    else:
+        partitions = run_multiple_louvain_parallel(
+            G_undirected,
+            n_runs=n_runs,
+            existing_partitions=existing_partitions,
+            n_workers=n_louvain_workers,
+            batch_per_worker=True,
+        )
+    louvain_elapsed = time.perf_counter() - t0_louvain
 
     # Build/update coassociation matrix
-    nodes, coassoc, coassoc_state = build_coassociation_matrix_parallel(
-        G,
-        partitions,
-        n_threads=n_threads,
-        prev_state=coassoc_state,
-    )
+    t0_coassoc = time.perf_counter()
+    if backend == "gpu_cugraph":
+        nodes, coassoc, coassoc_state = build_coassociation_matrix_cupy(
+            G,
+            partitions,
+            prev_state=coassoc_state,
+            gpu_device=gpu_device,
+        )
+    else:
+        nodes, coassoc, coassoc_state = build_coassociation_matrix_parallel(
+            G,
+            partitions,
+            n_threads=n_threads,
+            prev_state=coassoc_state,
+        )
+    coassociation_elapsed = time.perf_counter() - t0_coassoc
 
     # Number of clusters
+    t0_clustering = time.perf_counter()
     if n_clusters is None:
         total_communities = sum(len(set(partition.values())) for partition in partitions)
         avg_communities = total_communities / len(partitions)
@@ -570,8 +604,10 @@ def consensus_partition(
     )
     labels = clustering.fit_predict(distance_matrix)
     consensus = {node: labels[i] for i, node in enumerate(nodes)}
+    clustering_elapsed = time.perf_counter() - t0_clustering
 
     # Genes in same community as gene_of_interest across all partitions
+    t0_goi = time.perf_counter()
     union_genes = set()
     if gene_of_interest is not None:
         for partition in partitions:
@@ -589,8 +625,28 @@ def consensus_partition(
             plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, plots_dir)
     else:
         num_genes_same_comm = None
+    goi_elapsed = time.perf_counter() - t0_goi
 
-    logger.info("Consensus partition completed in %.2fs.", time.perf_counter() - t0_total)
+    total_elapsed = time.perf_counter() - t0_total
+    global _LAST_CONSENSUS_PROFILE
+    _LAST_CONSENSUS_PROFILE = {
+        "consensus_total_seconds": total_elapsed,
+        "louvain_seconds": louvain_elapsed,
+        "coassociation_seconds": coassociation_elapsed,
+        "agglomerative_clustering_seconds": clustering_elapsed,
+        "goi_frequency_seconds": goi_elapsed,
+        "nodes_total": len(nodes),
+        "edges_total": G.number_of_edges(),
+        "partitions_total": len(partitions),
+        "new_partitions_this_iteration": len(partitions) - len(existing_partitions),
+        "coassociation_matrix_cells": int(len(nodes) * len(nodes)),
+        "consensus_backend": backend,
+        "louvain_backend": "cugraph" if backend == "gpu_cugraph" else "python-louvain",
+        "coassociation_backend": "cupy" if backend == "gpu_cugraph" else "numpy",
+        "louvain_seed_control": LOUVAIN_SEED_CONTROL if backend == "gpu_cugraph" else "random_state_seeded",
+    }
+
+    logger.info("Consensus partition completed in %.2fs.", total_elapsed)
     return consensus, coassoc, partitions, num_genes_same_comm, nodes, coassoc_state
 
 
@@ -677,7 +733,7 @@ def save_gene_frequencies_to_csv(nodes, coassoc, gene_of_interest, run_count, sa
     ]
 
     df = pd.DataFrame(gene_frequencies)
-    df = df.sort_values(by="Coassociation Frequency", ascending=False)
+    df = df.sort_values(by=["Coassociation Frequency", "Gene"], ascending=[False, True])
 
     csv_filename = f"{gene_of_interest}_coassoc_{run_count}_runs.csv"
     csv_path = os.path.join(save_dir, csv_filename)
@@ -720,7 +776,7 @@ if __name__ == '__main__':
     output_dir = results_path("coassociation", f"BASE_BENITO_GORILLA2_1st_{gene_of_interest}_freq_{p_threshold}")
     gc_filepath = "granger_causality_results_truncated_benito_gorilla.csv"
 
-    
+
 
     # Set up logging first
     setup_logging(log_file=f"{output_dir}/run_{current_runs}_{gene_of_interest}_{p_threshold}.log", level=logging.INFO)
@@ -734,7 +790,7 @@ if __name__ == '__main__':
 
 
     logger.info("Starting stability check for %s (p_threshold=%.6f)", genelist_global, p_threshold)
-    
+
     significant_edges = collect_significant_edges_kutsche(
         gc_filepath,
         p_value_threshold=strict_threshold,
@@ -812,7 +868,7 @@ if __name__ == '__main__':
             )
 
             logger.info(
-                "CSV stability metrics → Q(%.2f)=%.6f | Top-%d overlap=%.2f%%",
+                "CSV stability metrics -> Q(%.2f)=%.6f | Top-%d overlap=%.2f%%",
                 csv_cfg.quantile_p,
                 q_rel,
                 k,

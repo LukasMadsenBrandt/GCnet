@@ -1,11 +1,19 @@
 import csv
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import gene_analysis.io.paths as paths
-from gene_analysis.pipeline.config import DatasetConfig, ExpansionConfig, NetworkConfig, ProbeConfig, SeedGeneConfig
+from gene_analysis.pipeline.config import (
+    DatasetConfig,
+    ExpansionConfig,
+    NetworkConfig,
+    PreprocessingConfig,
+    ProbeConfig,
+    SeedGeneConfig,
+)
 from gene_analysis.pipeline.dataset_probe import generate_probe_pairs, run as run_probe
 from gene_analysis.pipeline.network_expansion import extract_expanded_genes_from_csv, run as run_expansion
 from gene_analysis.pipeline.probe_selection import ProbeSelectionConfig, select_probe_genes
@@ -138,6 +146,10 @@ gene_of_interest: ZEB2
 seed_gene_file: seeds.txt
 network:
   p_value_threshold: 0.0015
+preprocessing:
+  normalize: zscore
+  transform: log1p
+  aggregation: mean
 probe_selection:
   mode: min_frequency
   top_percent: null
@@ -146,6 +158,9 @@ execution:
   max_workers: 2
   chunk_size: 10
   resume: false
+  gc_backend: cpu_statsmodels
+  consensus_backend: cpu_louvain
+  gpu_device: 0
 """,
         encoding="utf-8",
     )
@@ -154,21 +169,166 @@ execution:
 
     assert cfg.run_name == "zeb2_demo"
     assert cfg.network.p_value_threshold == pytest.approx(0.0015)
+    assert cfg.network.write_svg is True
+    assert cfg.network.svg_renderer == "networkx"
+    assert cfg.network.svg_layout == "dot"
+    assert cfg.preprocessing.normalize == "zscore"
+    assert cfg.preprocessing.transform == "log1p"
+    assert cfg.preprocessing.aggregation == "mean"
     assert cfg.probe_selection.mode == "min_frequency"
     assert cfg.execution.max_workers == 2
     assert cfg.execution.resume is False
+    assert cfg.execution.gc_backend == "cpu_statsmodels"
+    assert cfg.execution.consensus_backend == "cpu_louvain"
+    assert cfg.execution.gpu_device == 0
+
+
+def test_preprocessing_config_rejects_unknown_options():
+    with pytest.raises(ValueError, match="preprocessing.transform"):
+        PreprocessingConfig(transform="rank").validate()
+
+
+def test_network_config_rejects_non_boolean_svg_flag():
+    with pytest.raises(ValueError, match="network.write_svg"):
+        NetworkConfig(write_svg="false").validate()
+
+
+def test_network_config_rejects_unknown_svg_renderer():
+    with pytest.raises(ValueError, match="network.svg_renderer"):
+        NetworkConfig(svg_renderer="unknown").validate()
+
+
+def test_network_config_rejects_unknown_svg_layout():
+    with pytest.raises(ValueError, match="network.svg_layout"):
+        NetworkConfig(svg_layout="unknown").validate()
 
 
 def test_dataset_pipeline_configs_load():
     for path in (
-        "configs/gene_expansion.kutsche.yml",
-        "configs/gene_expansion.benito_human.yml",
-        "configs/gene_expansion.benito_gorilla.yml",
+        "configs/production/gene_expansion.kutsche.yml",
+        "configs/production/gene_expansion.benito_human.yml",
+        "configs/production/gene_expansion.benito_gorilla.yml",
+        "configs/production_like/gene_expansion.kutsche.real_gc_small.yml",
+        "configs/production_like/gene_expansion.benito_human.real_gc_small.yml",
+        "configs/production_like/gene_expansion.benito_gorilla.real_gc_small.yml",
+        "configs/test/gene_expansion.gpu_sample.yml",
     ):
         cfg = PipelineConfig.from_yaml(path)
         assert cfg.dataset.expression_file
         assert cfg.dataset.full_gene_file
         assert cfg.seed_gene_file
+        assert cfg.network.write_svg is True
+        assert cfg.network.svg_renderer == "networkx"
+        assert cfg.network.svg_layout == "dot"
+
+
+def test_generic_expression_dataset_loads_preprocessed_matrix(tmp_path):
+    expression_file = tmp_path / "expression.csv"
+    full_gene_file = tmp_path / "genes.txt"
+    seed_file = tmp_path / "seeds.txt"
+    expression_file.write_text(
+        "Gene,T1,T2,T3,T4,T5\nZEB2,1,2,3,4,5\nA,2,3,4,5,6\n",
+        encoding="utf-8",
+    )
+    full_gene_file.write_text("ZEB2\nA\n", encoding="utf-8")
+    seed_file.write_text("ZEB2\n", encoding="utf-8")
+    cfg = PipelineConfig(
+        run_name="generic_dataset",
+        dataset=DatasetConfig(
+            name="generic_expression",
+            expression_file=expression_file,
+            full_gene_file=full_gene_file,
+        ),
+        gene_of_interest="ZEB2",
+        seed_gene_file=seed_file,
+    )
+
+    df = PipelineRunner(cfg).load_expression_dataframe()
+
+    assert list(df.index) == ["ZEB2", "A"]
+    assert list(df.columns) == ["T1", "T2", "T3", "T4", "T5"]
+
+
+def test_generic_expression_applies_log1p_transform(tmp_path):
+    expression_file = tmp_path / "expression.csv"
+    full_gene_file = tmp_path / "genes.txt"
+    seed_file = tmp_path / "seeds.txt"
+    expression_file.write_text(
+        "Gene,T1,T2,T3,T4,T5\nZEB2,0,1,2,3,4\n",
+        encoding="utf-8",
+    )
+    full_gene_file.write_text("ZEB2\n", encoding="utf-8")
+    seed_file.write_text("ZEB2\n", encoding="utf-8")
+    cfg = PipelineConfig(
+        run_name="generic_dataset",
+        dataset=DatasetConfig(
+            name="generic_expression",
+            expression_file=expression_file,
+            full_gene_file=full_gene_file,
+        ),
+        gene_of_interest="ZEB2",
+        seed_gene_file=seed_file,
+        preprocessing=PreprocessingConfig(transform="log1p"),
+    )
+
+    df = PipelineRunner(cfg).load_expression_dataframe()
+
+    assert df.loc["ZEB2", "T1"] == pytest.approx(0.0)
+    assert df.loc["ZEB2", "T2"] == pytest.approx(0.693147, abs=1e-6)
+
+
+def test_kutsche_expression_applies_shared_log1p_transform(tmp_path):
+    expression_file = tmp_path / "kutsche_counts.tsv"
+    full_gene_file = tmp_path / "genes.txt"
+    seed_file = tmp_path / "seeds.txt"
+    expression_file.write_text(
+        "\t".join(["Gene", "WT_d1_r1", "WT_d2_r1", "WT_d3_r1", "WT_d4_r1", "WT_d5_r1"])
+        + "\n"
+        + "\t".join(["ZEB2", "0", "1", "2", "3", "4"])
+        + "\n",
+        encoding="utf-8",
+    )
+    full_gene_file.write_text("ZEB2\n", encoding="utf-8")
+    seed_file.write_text("ZEB2\n", encoding="utf-8")
+    cfg = PipelineConfig(
+        run_name="kutsche_dataset",
+        dataset=DatasetConfig(
+            name="kutsche",
+            expression_file=expression_file,
+            full_gene_file=full_gene_file,
+        ),
+        gene_of_interest="ZEB2",
+        seed_gene_file=seed_file,
+        preprocessing=PreprocessingConfig(normalize="none", transform="log1p", aggregation="mean"),
+    )
+
+    df = PipelineRunner(cfg).load_expression_dataframe()
+
+    assert list(df.columns) == [1, 2, 3, 4, 5]
+    assert df.loc["ZEB2", 1] == pytest.approx(0.0)
+    assert df.loc["ZEB2", 2] == pytest.approx(0.693147, abs=1e-6)
+
+
+def test_generic_expression_requires_five_timepoints(tmp_path):
+    expression_file = tmp_path / "expression.csv"
+    full_gene_file = tmp_path / "genes.txt"
+    seed_file = tmp_path / "seeds.txt"
+    expression_file.write_text("Gene,T1,T2,T3,T4\nZEB2,1,2,3,4\n", encoding="utf-8")
+    full_gene_file.write_text("ZEB2\n", encoding="utf-8")
+    seed_file.write_text("ZEB2\n", encoding="utf-8")
+    cfg = PipelineConfig(
+        run_name="generic_dataset",
+        dataset=DatasetConfig(
+            name="generic_expression",
+            expression_file=expression_file,
+            full_gene_file=full_gene_file,
+        ),
+        gene_of_interest="ZEB2",
+        seed_gene_file=seed_file,
+    )
+
+    with pytest.raises(ValueError, match="at least 5"):
+        PipelineRunner(cfg).load_expression_dataframe()
 
 
 def test_normalize_stage_accepts_numbers_and_prefixes():
@@ -193,6 +353,22 @@ def test_probe_selection_top_percent_includes_goi(tmp_path):
     )
 
     assert genes == ["ZEB2", "A"]
+
+
+def test_probe_selection_breaks_frequency_ties_by_gene_name(tmp_path):
+    frequency_csv = tmp_path / "freq.csv"
+    frequency_csv.write_text(
+        "Gene,Coassociation Frequency\nGENE_043,1.0\nGENE_001,1.0\nZEB2,1.0\nGENE_045,1.0\n",
+        encoding="utf-8",
+    )
+
+    genes = select_probe_genes(
+        frequency_csv,
+        gene_of_interest="ZEB2",
+        selection=ProbeSelectionConfig(mode="top_percent", top_percent=50.0),
+    )
+
+    assert genes == ["ZEB2", "GENE_001", "GENE_043"]
 
 
 def test_probe_selection_min_frequency(tmp_path):
@@ -261,9 +437,11 @@ def test_runner_stage_05_from_configured_artifact(tmp_path, monkeypatch):
     assert manifest["parameters"]["p_value_threshold"] == pytest.approx(0.01)
 
 
+@pytest.mark.integration
+@pytest.mark.visual
 def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
-    cfg = PipelineConfig.from_yaml("configs/gene_expansion.sample.yml")
+    cfg = PipelineConfig.from_yaml("configs/test/gene_expansion.sample.yml")
 
     artifacts = PipelineRunner(cfg).run()
 
@@ -281,18 +459,45 @@ def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
 
     assert artifacts["seed_gc_csv"].exists()
     assert artifacts["seed_network_graphml"].exists()
+    assert artifacts["seed_network_svg"].exists()
     assert artifacts["seed_network_edges_csv"].exists()
+    assert artifacts["seed_top_consensus_network_graphml"].exists()
+    assert artifacts["seed_top_consensus_network_svg"].exists()
+    assert artifacts["seed_top_consensus_network_edges_csv"].exists()
     assert artifacts["seed_consensus_history_json"].exists()
     assert artifacts["probe_genes_file"].exists()
     assert artifacts["probe_gc_csv"].exists()
     assert artifacts["expanded_genes_file"].exists()
     assert artifacts["probe_network_graphml"].exists()
+    assert artifacts["probe_network_svg"].exists()
     assert artifacts["probe_network_edges_csv"].exists()
     assert artifacts["expanded_gc_csv"].exists()
     assert artifacts["priority_genes_csv"].exists()
     assert artifacts["expanded_consensus_history_json"].exists()
     assert artifacts["expanded_network_graphml"].exists()
+    assert artifacts["expanded_network_svg"].exists()
     assert artifacts["expanded_network_edges_csv"].exists()
+    assert artifacts["expanded_top_consensus_network_graphml"].exists()
+    assert artifacts["expanded_top_consensus_network_svg"].exists()
+    assert artifacts["expanded_top_consensus_network_edges_csv"].exists()
+    assert artifacts["run_summary_md"].exists()
+    assert artifacts["seed_network_figure_svg"].exists()
+    assert artifacts["seed_top_consensus_network_figure_svg"].exists()
+    assert artifacts["probe_network_figure_svg"].exists()
+    assert artifacts["expanded_network_figure_svg"].exists()
+    assert artifacts["expanded_top_consensus_network_figure_svg"].exists()
+    assert "ZEB2" in artifacts["seed_network_svg"].read_text(encoding="utf-8")
+    assert "ZEB2" in artifacts["seed_top_consensus_network_svg"].read_text(encoding="utf-8")
+    assert "ZEB2" in artifacts["probe_network_svg"].read_text(encoding="utf-8")
+    assert "ZEB2" in artifacts["expanded_network_svg"].read_text(encoding="utf-8")
+    assert "ZEB2" in artifacts["expanded_top_consensus_network_svg"].read_text(encoding="utf-8")
+    run_summary = artifacts["run_summary_md"].read_text(encoding="utf-8")
+    assert "Pipeline Evolution" in run_summary
+    assert "Top Priority Genes" in run_summary
+    assert "GC backend: `cpu_statsmodels`" in run_summary
+    assert "Consensus backend: `cpu_louvain`" in run_summary
+    assert "Network SVG renderer: `networkx`" in run_summary
+    assert "Network SVG layout: `dot`" in run_summary
     expanded_genes = artifacts["expanded_genes_file"].read_text(encoding="utf-8").splitlines()
     assert len(expanded_genes) == 150
     assert "GENE_149" in expanded_genes
@@ -310,20 +515,85 @@ def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
     assert seed_manifest["metrics"]["genes_total"] == 50
     assert seed_manifest["metrics"]["edges_total"] == 50 * 49
     assert seed_manifest["metrics"]["gene_of_interest_consensus_community_genes"] >= 1
+    assert seed_manifest["metrics"]["consensus_total_seconds"] >= 0
+    assert seed_manifest["metrics"]["louvain_seconds"] >= 0
+    assert seed_manifest["metrics"]["coassociation_seconds"] >= 0
+    assert seed_manifest["metrics"]["agglomerative_clustering_seconds"] >= 0
+    assert seed_manifest["metrics"]["coassociation_matrix_cells"] == 50 * 50
+    assert seed_manifest["metrics"]["top_consensus_genes_total"] >= 1
+    assert seed_manifest["metrics"]["top_consensus_subcommunities"] >= 1
     run_manifest = json.loads((cfg.run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     assert run_manifest["settings"]["gene_of_interest"] == "ZEB2"
+    assert run_manifest["settings"]["preprocessing"]["transform"] == "none"
+    assert run_manifest["settings"]["execution"]["gc_backend"] == "cpu_statsmodels"
+    assert run_manifest["settings"]["execution"]["consensus_backend"] == "cpu_louvain"
+    assert run_manifest["artifacts"]["run_summary_md"].endswith("RUN_SUMMARY.md")
     assert run_manifest["pipeline_evolution"]
+    assert seed_gc_manifest["metrics"]["backend_metadata"]["backend"] == "cpu_statsmodels"
+    assert seed_manifest["metrics"]["backend_metadata"]["backend"] == "cpu_louvain"
 
 
+def test_pipeline_can_skip_network_svg_previews_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
+    cfg = PipelineConfig.from_yaml("configs/test/gene_expansion.sample.yml")
+    cfg = replace(cfg, run_name="sample_fixture_no_network_svg", network=NetworkConfig(p_value_threshold=0.01, write_svg=False))
+
+    artifacts = PipelineRunner(cfg).run(stop_after="05_expanded_genes")
+
+    assert artifacts["seed_gc_csv"].exists()
+    assert artifacts["seed_frequency_csv"].exists()
+    assert artifacts["expanded_genes_file"].exists()
+    assert artifacts["seed_network_graphml"].exists()
+    assert artifacts["seed_network_edges_csv"].exists()
+    assert artifacts["seed_network_nodes_file"].exists()
+    assert artifacts["seed_network_summary_json"].exists()
+    assert artifacts["seed_top_consensus_network_graphml"].exists()
+    assert artifacts["seed_top_consensus_network_edges_csv"].exists()
+    assert artifacts["seed_top_consensus_network_nodes_file"].exists()
+    assert artifacts["seed_top_consensus_network_summary_json"].exists()
+    assert artifacts["probe_network_graphml"].exists()
+    assert artifacts["probe_network_edges_csv"].exists()
+    assert artifacts["probe_network_nodes_file"].exists()
+    assert artifacts["probe_network_summary_json"].exists()
+    assert "seed_network_svg" not in artifacts
+    assert "seed_top_consensus_network_svg" not in artifacts
+    assert "seed_network_figure_svg" not in artifacts
+    assert "seed_top_consensus_network_figure_svg" not in artifacts
+    assert not (cfg.run_dir / "02_seed_consensus" / "seed_network.svg").exists()
+    assert not (cfg.run_dir / "02_seed_consensus" / "seed_top_consensus_network.svg").exists()
+    assert not (cfg.run_dir / "05_expanded_genes" / "probe_network.svg").exists()
+    assert artifacts["run_summary_md"].exists()
+
+    expanded_genes = artifacts["expanded_genes_file"].read_text(encoding="utf-8").splitlines()
+    assert len(expanded_genes) == 150
+
+    seed_manifest = json.loads((cfg.run_dir / "02_seed_consensus" / "manifest.json").read_text(encoding="utf-8"))
+    assert seed_manifest["parameters"]["write_network_svg"] is False
+    assert "seed_network_svg" not in seed_manifest["outputs"]
+    assert "seed_top_consensus_network_svg" not in seed_manifest["outputs"]
+    assert "seed_network_graphml" in seed_manifest["outputs"]
+    assert "seed_top_consensus_network_graphml" in seed_manifest["outputs"]
+    probe_manifest = json.loads((cfg.run_dir / "05_expanded_genes" / "manifest.json").read_text(encoding="utf-8"))
+    assert probe_manifest["parameters"]["write_network_svg"] is False
+    assert "probe_network_svg" not in probe_manifest["outputs"]
+    assert "probe_network_graphml" in probe_manifest["outputs"]
+
+
+@pytest.mark.real_gc
+@pytest.mark.integration
+@pytest.mark.visual
 def test_sample_real_gc_pipeline_runs_all_stages(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
-    cfg = PipelineConfig.from_yaml("configs/gene_expansion.real_gc_sample.yml")
+    cfg = PipelineConfig.from_yaml("configs/test/gene_expansion.real_gc_sample.yml")
 
     artifacts = PipelineRunner(cfg).run()
 
     assert artifacts["seed_gc_csv"].exists()
+    assert artifacts["seed_network_svg"].exists()
     assert artifacts["probe_gc_csv"].exists()
+    assert artifacts["probe_network_svg"].exists()
     assert artifacts["expanded_gc_csv"].exists()
+    assert artifacts["expanded_network_svg"].exists()
     assert artifacts["priority_genes_csv"].exists()
     assert "ZEB2" in artifacts["priority_genes_csv"].read_text(encoding="utf-8")
 

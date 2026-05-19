@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite it. If the pipeline substantially contributes to study design, analysis, interpretation, or manuscript conclusions, please contact the author about collaboration or co-authorship."
+title: "Guided Gene-Expansion Analysis Pipeline"
+authors:
+  - family-names: "Madsen Brandt"
+    given-names: "Lukas"
+year: 2026
+license: MIT
+repository-code: "https://github.com/LukasMadsenBrandt/gene_analysis_dashboard"
+abstract: "A guided neurodeficiency gene-expansion pipeline using Granger causality, significant-edge networks, stability-controlled Louvain consensus, and ranked candidate gene prioritization."

@@ -14,7 +14,7 @@ def load_genes(filepath):
     with open(filepath, "r") as f:
         # Strip whitespace and ignore empty lines
         return set(line.strip() for line in f if line.strip())
-    
+
 
 #genes1_files = ["13809_00015.csv", "16090_0002.csv"]
 genes1_files = [

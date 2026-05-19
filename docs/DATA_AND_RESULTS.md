@@ -40,6 +40,9 @@ These files are not committed to GitHub, so a fresh clone can run the example
 fixtures immediately but cannot run the production Kutsche/Benito configs until
 the real datasets have been placed in the correct folders.
 
+See [Data preparation](DATA_PREPARATION.md) for the exact expression-matrix,
+gene-list, and Benito mapping formats expected by the pipeline.
+
 Production configs currently expect these local resources:
 
 - `Data/Kutsche/Kutsche_Counts.txt`

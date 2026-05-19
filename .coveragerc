@@ -1,0 +1,19 @@
+[run]
+source =
+    gene_analysis
+    gene_analysis_common
+omit =
+    */__init__.py
+    gene_analysis/analysis/consensus_backend.py
+    gene_analysis/pipeline/expanded_gc.py
+    gene_analysis/pipeline/seed_gc.py
+    scripts/legacy/*
+    scripts/pipeline/*
+    scripts/reporting/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+show_missing = true

@@ -1,0 +1,12 @@
+name: gene-cuda-rapids
+channels:
+  - rapidsai
+  - conda-forge
+  - nvidia
+dependencies:
+  - python=3.11
+  - cuda-version=12.3
+  - cudf
+  - cugraph
+  - cupy
+  - pip

@@ -16,12 +16,12 @@ import os
 
 from gene_analysis_common.network import create_network
 from gene_analysis.io.paths import results_path
-from gene_analysis_benito.granger_causality import filter_gene_pairs as filter_gene_pairs_benito
-from gene_analysis_benito.granger_causality import collect_significant_edges as collect_significant_edges_benito
+from gene_analysis_common.granger_causality import filter_gene_pairs as filter_gene_pairs_benito
+from gene_analysis_common.granger_causality import collect_significant_edges as collect_significant_edges_benito
 
 
-from gene_analysis_kutsche.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
-from gene_analysis_kutsche.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
+from gene_analysis_common.granger_causality import filter_gene_pairs as filter_gene_pairs_kutsche
+from gene_analysis_common.granger_causality import collect_significant_edges as collect_significant_edges_kutsche
 
 
 
@@ -76,14 +76,14 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
     """Run repeated Louvain consensus and return GOI coassociation metadata."""
     partitions = run_multiple_louvain_parallel(G, n_runs, existing_partitions)
     nodes, coassoc = build_coassociation_matrix(G, partitions)
-    
+
     plot = True
     # If n_clusters is not provided, compute it as the average number of communities over all partitions.
     if n_clusters is None:
         total_communities = sum(len(set(partition.values())) for partition in partitions)
         avg_communities = total_communities / len(partitions)
         n_clusters = int(round(avg_communities)) if avg_communities > 1 else 1  # Ensure at least 1 cluster
-    
+
     # Convert coassociation to a distance matrix (1 - coassociation)
     distance_matrix = 1 - coassoc
     clustering = AgglomerativeClustering(
@@ -93,7 +93,7 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
     )
     labels = clustering.fit_predict(distance_matrix)
     consensus = {node: labels[i] for i, node in enumerate(nodes)}
-    
+
     # Compute the union of all genes that have ever been in the same community as gene_of_interest
     union_genes = set()
     if gene_of_interest is not None:
@@ -109,16 +109,16 @@ def consensus_partition(G, n_runs=20, n_clusters=None, gene_of_interest=None, pl
     else:
         num_genes_same_comm = None
     return consensus, coassoc, partitions, num_genes_same_comm, nodes
-    
+
 
 import plotly.express as px
 import plotly.io as pio
 
 def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_dir):
     """
-    Plot an interactive scatter plot showing the coassociation frequency for each gene 
+    Plot an interactive scatter plot showing the coassociation frequency for each gene
     with respect to the gene_of_interest, based on the coassociation matrix.
-    
+
     Parameters:
         coassoc (np.ndarray): The coassociation matrix (assumed symmetric).
         nodes (list): List of gene names corresponding to the rows/columns of coassoc.
@@ -131,10 +131,10 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
     """
     #gene_of_interest = "RPL8"
     # Find the index of the gene of interest in the nodes list.
-    
+
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)  # Create directory if it does not exist
-    
+
     try:
         idx = nodes.index(gene_of_interest)
     except ValueError:
@@ -152,7 +152,7 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
     })
     # Remove the gene of interest itself.
     df = df[df['Gene'] != gene_of_interest]
-    
+
     # Create an interactive scatter plot using Plotly Express.
     fig = px.scatter(
         df,
@@ -161,7 +161,7 @@ def plot_coassociation_for_gene(coassoc, nodes, gene_of_interest, n_runs, save_d
         hover_data={'Gene': True, 'Coassociation Frequency': ':.4f'},
         title=f'Coassociation Frequencies for Genes with {gene_of_interest}',
     )
-    
+
     # Remove x-axis tick labels since we don't need gene names there.
     fig.update_layout(
         xaxis=dict(
@@ -193,14 +193,14 @@ import pandas as pd
 def save_gene_frequencies_to_csv(nodes, coassoc, gene_of_interest, run_count, save_dir="gene_frequencies"):
     """
     Saves the coassociation frequencies of all genes with respect to the given gene_of_interest to a CSV file.
-    
+
     Parameters:
         nodes (list): List of gene names.
         coassoc (np.ndarray): Coassociation matrix.
         gene_of_interest (str): The target gene for which frequencies are extracted.
         run_count (int): The number of Louvain runs for this iteration.
         save_dir (str): Directory where the CSV file will be saved.
-    
+
     Returns:
         None (saves the file in the specified directory).
     """
@@ -213,7 +213,7 @@ def save_gene_frequencies_to_csv(nodes, coassoc, gene_of_interest, run_count, sa
             {"Gene": gene, "Coassociation Frequency": coassoc[gene_index, i]}
             for i, gene in enumerate(nodes)
         ]
-        
+
         # Convert to a DataFrame and sort by frequency (descending)
         df = pd.DataFrame(gene_frequencies)
 

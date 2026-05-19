@@ -1,0 +1,24 @@
+name: gene-analysis
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - dash
+  - dash-bootstrap-components
+  - flask
+  - werkzeug
+  - networkx
+  - matplotlib
+  - numpy
+  - graphviz
+  - pandas
+  - python-louvain
+  - statsmodels
+  - kaleido
+  - tqdm
+  - scikit-learn
+  - pytest
+  - pytest-cov
+  - pre-commit
+  - pyyaml
+  - pip

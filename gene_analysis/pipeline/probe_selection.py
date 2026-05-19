@@ -67,7 +67,7 @@ def select_probe_genes(
                 continue
             rows.append((gene, freq))
 
-    rows.sort(key=lambda item: item[1], reverse=True)
+    rows.sort(key=lambda item: (-item[1], item[0].casefold()))
     if selection.mode == "top_percent":
         n = max(1, math.ceil(len(rows) * (float(selection.top_percent) / 100.0)))
         selected = [gene for gene, _ in rows[:n]]

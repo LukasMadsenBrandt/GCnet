@@ -26,13 +26,15 @@ flowchart TD
 3. Treat significant GC results as directed network edges using the configured p-value threshold.
 4. Run Louvain community detection many times around the gene of interest, increasing the number of runs until the coassociation frequencies are stable.
 5. Write a seed consensus CSV with each network gene and its frequency of being in the same community as the gene of interest.
-6. Select probe genes from that frequency CSV using either top percent or a minimum frequency cutoff. The gene of interest is always included.
-7. Probe the full dataset in both directions: selected genes to all dataset genes and all dataset genes to selected genes, excluding duplicate ordered pairs and self-pairs.
-8. Build a significant-edge network from the probe results and write all genes in that network as the expanded candidate set `y`.
-9. Run `y * (y - 1)` directed GC among the expanded candidate genes.
-10. Run the same stability-controlled Louvain consensus on the expanded GC network.
-11. Use the final sorted `Gene, Coassociation Frequency` table as the biological priority list for follow-up.
+6. Also write a top-5%-consensus subnetwork so the strongest GOI-community genes can be inspected with their internal subcommunities.
+7. Select probe genes from that frequency CSV using either top percent or a minimum frequency cutoff. The gene of interest is always included.
+8. Probe the full dataset in both directions: selected genes to all dataset genes and all dataset genes to selected genes, excluding duplicate ordered pairs and self-pairs.
+9. Build a significant-edge network from the probe results and write all genes in that network as the expanded candidate set `y`.
+10. Run `y * (y - 1)` directed GC among the expanded candidate genes.
+11. Run the same stability-controlled Louvain consensus on the expanded GC network.
+12. Write the expanded top-5%-consensus subnetwork for inspection.
+13. Use the final sorted `Gene, Coassociation Frequency` table as the biological priority list for follow-up.
 
 This strategy makes the search space smaller and more biologically meaningful at the start, while still allowing the dataset to suggest new candidate genes.
 
-The canonical runner is `python3 scripts/pipeline/run_pipeline.py --config configs/gene_expansion.example.yml`. It can also resume from any stage when the required upstream artifact is provided.
+The canonical runner is `python3 scripts/pipeline/run_pipeline.py --config configs/templates/gene_expansion.example.yml`. It can also resume from any stage when the required upstream artifact is provided.

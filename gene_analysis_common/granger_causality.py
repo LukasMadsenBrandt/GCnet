@@ -8,16 +8,28 @@ import multiprocessing
 import shutil
 import sys
 import tempfile
+import time
 import warnings
 from pathlib import Path
 
 from statsmodels.tsa.stattools import grangercausalitytests
 
-from gene_analysis_kutsche.decorators import timing_decorator
 from gene_analysis.io.paths import resolve_existing_path
 
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
+
+
+def timing_decorator(func):
+    """Print the runtime of legacy all-pairs Granger helpers."""
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"Total execution time of {func.__name__}: {end_time - start_time} seconds")
+        return result
+
+    return wrapper
 
 
 def process_gene_combination(combination, time_series_data, progress_queue):
@@ -210,6 +222,7 @@ def filter_gene_pairs(
                 filtered_edges.append(row)
 
         filtered_rows = []
+        seen_filtered_rows = set()
 
         while newly_added_genes:
             current_genes = newly_added_genes.copy()
@@ -220,7 +233,10 @@ def filter_gene_pairs(
                 gene2 = row["gene2"]
 
                 if gene1 in current_genes or gene2 in current_genes:
-                    filtered_rows.append(row)
+                    row_key = tuple(row.get(name, "") for name in fieldnames or [])
+                    if row_key not in seen_filtered_rows:
+                        filtered_rows.append(row)
+                        seen_filtered_rows.add(row_key)
 
                     if gene1 not in all_related_genes:
                         newly_added_genes.add(gene1)

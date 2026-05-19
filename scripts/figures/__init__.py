@@ -1,2 +1,0 @@
-"""Figure-generation script wrappers."""
-

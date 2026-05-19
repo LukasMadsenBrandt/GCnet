@@ -21,4 +21,3 @@ def test_create_network_handles_intersection_edges():
 def test_create_network_rejects_invalid_edges():
     with pytest.raises(ValueError):
         create_network([("A", "B")])
-

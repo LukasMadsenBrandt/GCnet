@@ -269,7 +269,7 @@ def create_graphviz_dot(
     - If highlight_new_genes[0] is True, nodes in highlight_new_genes[1] are GREY (Steiner-added).
     - If highlight_node is set, its border is thicker and its outgoing edges get extra width.
     """
-    
+
     if not highlight_new_genes:
         new_nodes_flag, new_nodes_list = False, []
     else:
@@ -1068,7 +1068,7 @@ def build_gene_network(gene_list: List[str], csv_file: str, p_threshold: float =
     assert required_columns.issubset(df.columns), f"Missing required columns: {required_columns - set(df.columns)}"
 
     df_filtered = df[(df['gene1'].isin(gene_list) & df['gene2'].isin(gene_list)) & (df['p-value'] <= p_threshold)]
-    
+
     logger.debug("Filtered edges: %d", len(df_filtered))
     G = nx.DiGraph()
     for _, row in df_filtered.iterrows():
@@ -1117,7 +1117,7 @@ def visualize_gene_network(
 
 
     logger = logger or get_logger()
-    
+
     gene_list = select_genes_from_frequency(
         freq_csv,
         min_frequency=freq_threshold,
@@ -1148,11 +1148,11 @@ def visualize_gene_network(
 
     logger.info("Initial graph: inputs=%d, nodes=%d, edges=%d",
                 len(gene_list), G_full.number_of_nodes(), G_full.number_of_edges())
-    
+
     if G_full.number_of_nodes() == 0:
         logger.warning("No edges found. Empty graph.")
         return
-    
+
 
 
     # 2) Choose build mode
@@ -1309,7 +1309,7 @@ def visualize_gene_network(
     if os.path.isdir(output_path) or output_path.endswith(os.sep):
         out_dir = output_path
         os.makedirs(out_dir, exist_ok=True)
-        filename = f"{mode}_{layout}" 
+        filename = f"{mode}_{layout}"
         dot.render(filename=filename, directory=out_dir, format="svg", cleanup=True)
         svg_path = os.path.join(out_dir, f"{filename}.svg")
     else:
@@ -2136,7 +2136,7 @@ if __name__ == "__main__":
     # You can also override freq_thresholds/layouts per CSV.
     # ---------------------------------------
     datasets = {
-        
+
         # "gc_r_p00015_503811of190674672.csv": {
         #    "p_threshold": 0.0015,
         #    "freq_files": [
@@ -2144,14 +2144,14 @@ if __name__ == "__main__":
         #   ],
         #    #"number_of_runs": 1000
         # },
-        
+
         "granger_causality_results_truncated_benito_human.csv": {
             "p_threshold": 0.0015,
             "gene_of_interest": "ZEB2",
             "freq_files": [
                 "ZEB2_coassoc_00015_110906_runs.csv",
             ],
-            #"number_of_runs": 1000     
+            #"number_of_runs": 1000
         },
         "granger_causality_results_truncated_benito_gorilla.csv": {
             "p_threshold": 0.002,
@@ -2159,7 +2159,7 @@ if __name__ == "__main__":
             "freq_files": [
                 "ZEB2_coassoc_0002_110906_runs.csv",
             ],
-            #"number_of_runs": 1000     
+            #"number_of_runs": 1000
         },
         "granger_causality_results_truncated.csv": {
             "p_threshold": 0.0015,
@@ -2167,8 +2167,8 @@ if __name__ == "__main__":
             "freq_files": [
                 "MECP2_coassoc_00015_6000_runs.csv",
             ],
-            #"number_of_runs": 1000     
-        } 
+            #"number_of_runs": 1000
+        }
     }
 
     # GLOBAL defaults (used if a dataset doesn't override)
@@ -2177,8 +2177,8 @@ if __name__ == "__main__":
     global_layouts = ["fdp"]
     steiner_hop_penalty = 0.00015
     modes = [
-        #"induced", 
-        "mst", 
+        #"induced",
+        "mst",
         #"steiner"
     ]
 
@@ -2335,5 +2335,5 @@ if __name__ == "__main__":
                                 rlog.exception("Run failed: %s", e)
                             finally:
                                 highlight_new_genes = (False, [])
-                                
+
     logger.info("Total run time: %.2fs", time.perf_counter() - t0)

@@ -17,4 +17,3 @@ __all__ = [
     "save_results_to_csv",
     "update_progress_bar",
 ]
-

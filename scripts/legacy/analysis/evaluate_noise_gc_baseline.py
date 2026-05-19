@@ -12,8 +12,8 @@ import numpy as np
 from statsmodels.tsa.stattools import grangercausalitytests
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-from gene_analysis_kutsche.data_preprocessing import load_and_preprocess_data
-from gene_analysis_kutsche.data_filtering import preprocess_pipeline
+from gene_analysis.datasets.kutsche import load_and_preprocess_data
+from gene_analysis.datasets.kutsche import preprocess_pipeline
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
