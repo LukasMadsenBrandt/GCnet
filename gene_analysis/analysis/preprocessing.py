@@ -38,6 +38,33 @@ def apply_expression_preprocessing(df: pd.DataFrame, *, normalize: str | None, t
     return transform_gene_expression(normalized, transform)
 
 
+def aggregate_duplicate_genes(df: pd.DataFrame, *, method: str = "robust") -> pd.DataFrame:
+    """Collapse duplicate gene-index rows using the configured aggregation method."""
+    if not df.index.has_duplicates:
+        return df
+    numeric = df.apply(pd.to_numeric, errors="raise")
+    method = str(method).lower()
+    if method == "mean":
+        return numeric.groupby(level=0, sort=False).mean()
+    if method == "median":
+        return numeric.groupby(level=0, sort=False).median()
+    if method != "robust":
+        raise ValueError(f"Unknown aggregation method: {method}")
+
+    rows = []
+    labels = []
+    for gene, group in numeric.groupby(level=0, sort=False):
+        labels.append(gene)
+        if len(group) == 1:
+            rows.append(group.iloc[0])
+            continue
+        med = group.median(axis=0)
+        weights = 1 / (1 + group.subtract(med, axis=1).abs())
+        weights = weights.div(weights.sum(axis=0), axis=1)
+        rows.append((group * weights).sum(axis=0))
+    return pd.DataFrame(rows, index=labels, columns=numeric.columns)
+
+
 def _normalize_deseq_size_factors(df: pd.DataFrame) -> pd.DataFrame:
     """Apply the DESeq2 median-ratio size-factor normalization."""
     counts_no_zeros = df.replace(0, np.nan)

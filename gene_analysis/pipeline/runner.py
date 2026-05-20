@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, Optional
 import yaml
 
 from gene_analysis.analysis.backends import backend_metadata, require_available_backend
-from gene_analysis.analysis.preprocessing import apply_expression_preprocessing
+from gene_analysis.analysis.preprocessing import aggregate_duplicate_genes, apply_expression_preprocessing
 from gene_analysis.io.paths import resolve_existing_path, results_path
 from gene_analysis.pipeline.config import (
     ConsensusConfig,
@@ -730,6 +730,7 @@ class PipelineRunner:
                 normalize=self.config.preprocessing.normalize,
                 transform=self.config.preprocessing.transform,
             )
+            df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
             return self.restrict_expression_dataframe(df)
         if dataset_name in {"benito_human", "benito_gorilla"}:
             from gene_analysis.datasets.benito import preprocess_pipeline_benito
@@ -743,6 +744,7 @@ class PipelineRunner:
                 aggregation=self.config.preprocessing.aggregation,
             )
             df = _apply_remaining_preprocessing(df_mean_per_day, self.config.preprocessing)
+            df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
             return self.restrict_expression_dataframe(df)
         if dataset_name != "kutsche":
             raise NotImplementedError(
@@ -757,6 +759,7 @@ class PipelineRunner:
             aggregation=self.config.preprocessing.aggregation,
         )
         df = _apply_remaining_preprocessing(df_filtered, self.config.preprocessing)
+        df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
         return self.restrict_expression_dataframe(df)
 
     def restrict_expression_dataframe(self, df):

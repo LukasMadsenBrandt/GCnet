@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gene_analysis.analysis.preprocessing import apply_expression_preprocessing
+from gene_analysis.analysis.preprocessing import aggregate_duplicate_genes, apply_expression_preprocessing
 from gene_analysis.pipeline.runner import PipelineConfig
 
 
@@ -45,6 +45,19 @@ def test_deseq_normalization_uses_median_ratio_size_factors():
     assert result.loc["A", "T1"] == pytest.approx(result.loc["A", "T2"])
     assert result.loc["B", "T1"] == pytest.approx(result.loc["B", "T2"])
     assert result.loc["B", "T1"] == pytest.approx(result.loc["A", "T1"] * 2)
+
+
+def test_aggregate_duplicate_genes_uses_configured_method():
+    df = pd.DataFrame(
+        {"T1": [1.0, 3.0, 10.0], "T2": [2.0, 6.0, 20.0]},
+        index=["GGT1", "GGT1", "MECP2"],
+    )
+
+    result = aggregate_duplicate_genes(df, method="mean")
+
+    assert list(result.index) == ["GGT1", "MECP2"]
+    assert result.loc["GGT1", "T1"] == pytest.approx(2.0)
+    assert result.loc["GGT1", "T2"] == pytest.approx(4.0)
 
 
 def test_preprocessing_rejects_unknown_normalization():

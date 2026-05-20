@@ -277,6 +277,38 @@ def test_generic_expression_applies_log1p_transform(tmp_path):
     assert df.loc["ZEB2", "T2"] == pytest.approx(0.693147, abs=1e-6)
 
 
+def test_generic_expression_aggregates_duplicate_gene_symbols(tmp_path):
+    expression_file = tmp_path / "expression.csv"
+    full_gene_file = tmp_path / "genes.txt"
+    seed_file = tmp_path / "seeds.txt"
+    expression_file.write_text(
+        "Gene,T1,T2,T3,T4,T5\n"
+        "MECP2,1,2,3,4,5\n"
+        "GGT1,1,1,1,1,1\n"
+        "GGT1,3,3,3,3,3\n",
+        encoding="utf-8",
+    )
+    full_gene_file.write_text("MECP2\nGGT1\n", encoding="utf-8")
+    seed_file.write_text("MECP2\nGGT1\n", encoding="utf-8")
+    cfg = PipelineConfig(
+        run_name="generic_dataset_duplicates",
+        dataset=DatasetConfig(
+            name="generic_expression",
+            expression_file=expression_file,
+            full_gene_file=full_gene_file,
+        ),
+        gene_of_interest="MECP2",
+        seed_gene_file=seed_file,
+        preprocessing=PreprocessingConfig(aggregation="mean"),
+    )
+
+    df = PipelineRunner(cfg).load_expression_dataframe()
+
+    assert list(df.index) == ["MECP2", "GGT1"]
+    assert df.index.has_duplicates is False
+    assert df.loc["GGT1", "T1"] == pytest.approx(2.0)
+
+
 def test_kutsche_expression_applies_shared_log1p_transform(tmp_path):
     expression_file = tmp_path / "kutsche_counts.tsv"
     full_gene_file = tmp_path / "genes.txt"
