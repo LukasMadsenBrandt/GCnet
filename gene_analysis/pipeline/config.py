@@ -105,7 +105,7 @@ class DatasetConfig:
 
     name: str
     expression_file: Path
-    full_gene_file: Path
+    full_gene_file: Path | None = None
 
     def validate(self) -> None:
         """Raise ``ValueError`` when dataset metadata is incomplete."""
@@ -113,8 +113,6 @@ class DatasetConfig:
             raise ValueError("dataset.name is required.")
         if not self.expression_file:
             raise ValueError("dataset.expression_file is required.")
-        if not self.full_gene_file:
-            raise ValueError("dataset.full_gene_file is required.")
 
 
 @dataclass(frozen=True)

@@ -289,7 +289,7 @@ def setup_logging(log_file: str = "run.log", level=logging.INFO):
     fh.setFormatter(formatter)
     handlers.append(fh)
 
-    logging.basicConfig(level=level, handlers=handlers)
+    logging.basicConfig(level=level, handlers=handlers, force=True)
 
 
 logger = logging.getLogger(__name__)

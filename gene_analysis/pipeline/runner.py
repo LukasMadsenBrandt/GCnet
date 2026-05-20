@@ -77,12 +77,57 @@ def _count_text_lines(path: str | Path) -> int:
         return sum(1 for line in fh if line.strip())
 
 
+def _write_gene_list(genes: Iterable[str], path: str | Path) -> Path:
+    """Write a sorted, de-duplicated one-gene-per-line list."""
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with open(output, "w", encoding="utf-8") as fh:
+        for gene in sorted(dict.fromkeys(map(str, genes))):
+            fh.write(f"{gene}\n")
+    return output
+
+
 def _count_csv_rows(path: str | Path) -> int:
     """Count data rows in a CSV without loading the full file into memory."""
     with open(path, "r", encoding="utf-8-sig", newline="") as fh:
         reader = csv.reader(fh)
         next(reader, None)
         return sum(1 for row in reader if row)
+
+
+def _expanded_gene_set_metrics(expanded_genes: Iterable[str], seed_genes: Iterable[str]) -> dict[str, int | float]:
+    """Summarize how much the expanded set grows beyond the original seed set."""
+    expanded_set = set(map(str, expanded_genes))
+    seed_set = set(map(str, seed_genes))
+    seed_overlap = expanded_set & seed_set
+    new_genes = expanded_set - seed_set
+    expanded_count = len(expanded_set)
+    seed_count = len(seed_set)
+    return {
+        "seed_gene_count": seed_count,
+        "expanded_gene_count": expanded_count,
+        "expanded_seed_overlap_count": len(seed_overlap),
+        "expanded_new_gene_count": len(new_genes),
+        "expanded_seed_overlap_percent": (len(seed_overlap) / expanded_count * 100.0) if expanded_count else 0.0,
+        "expanded_new_gene_percent": (len(new_genes) / expanded_count * 100.0) if expanded_count else 0.0,
+        "seed_gene_retention_percent": (len(seed_overlap) / seed_count * 100.0) if seed_count else 0.0,
+    }
+
+
+def _gene_list_overlap_metrics(left: Iterable[str], right: Iterable[str]) -> dict[str, int | float]:
+    """Return compact overlap metrics for two configured gene lists."""
+    left_set = set(map(str, left))
+    right_set = set(map(str, right))
+    overlap = left_set & right_set
+    left_count = len(left_set)
+    right_count = len(right_set)
+    return {
+        "left_count": left_count,
+        "right_count": right_count,
+        "overlap_count": len(overlap),
+        "left_overlap_percent": (len(overlap) / left_count * 100.0) if left_count else 0.0,
+        "right_overlap_percent": (len(overlap) / right_count * 100.0) if right_count else 0.0,
+    }
 
 
 def _read_json(path: str | Path) -> dict[str, Any]:
@@ -289,7 +334,7 @@ class PipelineConfig:
             dataset=DatasetConfig(
                 name=dataset_name,
                 expression_file=Path(dataset_raw.get("expression_file") or ""),
-                full_gene_file=Path(dataset_raw.get("full_gene_file") or ""),
+                full_gene_file=Path(dataset_raw["full_gene_file"]) if dataset_raw.get("full_gene_file") else None,
             ),
             gene_of_interest=str(raw.get("gene_of_interest") or ""),
             seed_gene_file=Path(raw.get("seed_gene_file") or ""),
@@ -420,9 +465,11 @@ class PipelineRunner:
             "expanded_top_consensus_network_figure_svg": self.run_dir
             / "figures"
             / "expanded_top_consensus_network.svg",
+            "dataset_genes_file": self.run_dir / "00_dataset" / "dataset_genes.txt",
             "seed_gc_csv": self.run_dir / "01_seed_gc" / "seed_gc.csv",
             "seed_frequency_csv": self.run_dir / "02_seed_consensus" / "priority_genes.csv",
             "seed_consensus_history_json": self.run_dir / "02_seed_consensus" / "consensus_history.json",
+            "seed_consensus_progress_jsonl": self.run_dir / "02_seed_consensus" / "consensus_progress.jsonl",
             "seed_network_graphml": self.run_dir / "02_seed_consensus" / "seed_network.graphml",
             "seed_network_svg": self.run_dir / "02_seed_consensus" / "seed_network.svg",
             "seed_network_edges_csv": self.run_dir / "02_seed_consensus" / "seed_network_edges.csv",
@@ -454,6 +501,7 @@ class PipelineRunner:
             "expanded_gc_csv": self.run_dir / "06_expanded_gc" / "expanded_gc.csv",
             "priority_genes_csv": self.run_dir / "07_expanded_consensus" / "priority_genes.csv",
             "expanded_consensus_history_json": self.run_dir / "07_expanded_consensus" / "consensus_history.json",
+            "expanded_consensus_progress_jsonl": self.run_dir / "07_expanded_consensus" / "consensus_progress.jsonl",
             "expanded_network_graphml": self.run_dir / "07_expanded_consensus" / "expanded_network.graphml",
             "expanded_network_svg": self.run_dir / "07_expanded_consensus" / "expanded_network.svg",
             "expanded_network_edges_csv": self.run_dir / "07_expanded_consensus" / "expanded_network_edges.csv",
@@ -592,6 +640,10 @@ class PipelineRunner:
                 "genes_total",
                 "edges_total",
                 "gene_count",
+                "expanded_gene_count",
+                "expanded_new_gene_count",
+                "expanded_new_gene_percent",
+                "expanded_seed_overlap_count",
                 "gc_pairs_total",
                 "consensus_communities",
                 "gene_of_interest_consensus_community_genes",
@@ -603,6 +655,26 @@ class PipelineRunner:
                     row[key] = metrics[key]
             evolution.append(row)
         return evolution
+
+    def config_warnings(self) -> list[str]:
+        """Return researcher-facing warnings about configuration choices."""
+        warnings = []
+        if self.config.dataset.full_gene_file is None:
+            return warnings
+        try:
+            seed_genes = load_seed_genes(self.config.seed_gene_file)
+            full_genes = load_seed_genes(self.config.dataset.full_gene_file)
+        except Exception:
+            return warnings
+        overlap = _gene_list_overlap_metrics(seed_genes, full_genes)
+        if overlap["left_count"] and overlap["left_overlap_percent"] >= 95.0 and overlap["right_overlap_percent"] >= 95.0:
+            warnings.append(
+                "The configured seed gene list overlaps almost completely with the full gene list. "
+                "This makes the guided expansion behave like an all-genes run: seed GC and expanded GC "
+                "will have nearly the same search space, and `expanded_new_gene_count` will be near zero. "
+                "Use a smaller curated seed list when the goal is discovery beyond the original seeds."
+            )
+        return warnings
 
     def write_pipeline_figure_bundle(self) -> None:
         """Collect stage SVG previews in one run-level figures folder."""
@@ -632,6 +704,7 @@ class PipelineRunner:
         summary_path = self.default_artifacts()["run_summary_md"]
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         artifacts = {key: Path(value) for key, value in self.reported_artifacts().items()}
+        config_warnings = self.config_warnings()
         lines = [
             f"# Pipeline Run Summary: {self.config.run_name}",
             "",
@@ -641,7 +714,7 @@ class PipelineRunner:
             f"- Gene of interest: `{self.config.gene_of_interest}`",
             f"- Seed genes: `{self.config.seed_gene_file}`",
             f"- Expression matrix: `{self.config.dataset.expression_file}`",
-            f"- Full gene list: `{self.config.dataset.full_gene_file}`",
+            f"- Full gene landscape: `{self.config.dataset.full_gene_file or 'derived from expression matrix'}`",
             f"- P-value threshold: `{self.config.network.p_value_threshold}`",
             f"- Probe selection: `{self.config.probe_selection.mode}`",
             f"- GC backend: `{self.config.execution.gc_backend}`",
@@ -653,14 +726,16 @@ class PipelineRunner:
             "",
             "## Pipeline Evolution",
             "",
-            "| Stage | Genes | Edges | GC pairs | Communities | GOI community genes | Runs |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Stage | Genes | New genes | Seed overlap | Edges | GC pairs | Communities | GOI community genes | Runs |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
         for row in run_manifest.get("pipeline_evolution", []):
             lines.append(
-                "| {stage} | {genes} | {edges} | {pairs} | {communities} | {goi_comm} | {runs} |".format(
+                "| {stage} | {genes} | {new_genes} | {seed_overlap} | {edges} | {pairs} | {communities} | {goi_comm} | {runs} |".format(
                     stage=row.get("stage", ""),
-                    genes=row.get("genes_total", row.get("gene_count", "")),
+                    genes=row.get("expanded_gene_count", row.get("genes_total", row.get("gene_count", ""))),
+                    new_genes=row.get("expanded_new_gene_count", ""),
+                    seed_overlap=row.get("expanded_seed_overlap_count", ""),
                     edges=row.get("edges_total", ""),
                     pairs=row.get("gc_pairs_total", ""),
                     communities=row.get("consensus_communities", ""),
@@ -699,6 +774,7 @@ class PipelineRunner:
                 "",
                 "## Notes",
                 "",
+                *[f"- {warning}" for warning in config_warnings],
                 "- `gpu_cuda` accelerates Granger causality calculations and should be benchmarked against `cpu_statsmodels` when used on new hardware.",
                 "- `cpu_louvain` is the validated consensus backend. `gpu_cugraph` remains experimental until parity is demonstrated for the target dataset.",
                 "- Stage-level `manifest.json` files contain the full inputs, outputs, parameters, and metrics for auditing or resuming.",
@@ -709,7 +785,7 @@ class PipelineRunner:
         self.artifacts["run_summary_md"] = summary_path
         return summary_path
 
-    def load_expression_dataframe(self):
+    def load_expression_dataframe(self, *, restrict_to_configured_genes: bool = True):
         """Load and preprocess the configured expression matrix for heavy GC stages."""
         dataset_name = self.config.dataset.name.lower()
         if dataset_name in GENERIC_DATASET_NAMES:
@@ -731,7 +807,7 @@ class PipelineRunner:
                 transform=self.config.preprocessing.transform,
             )
             df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
-            return self.restrict_expression_dataframe(df)
+            return self.restrict_expression_dataframe(df) if restrict_to_configured_genes else df
         if dataset_name in {"benito_human", "benito_gorilla"}:
             from gene_analysis.datasets.benito import preprocess_pipeline_benito
 
@@ -745,7 +821,7 @@ class PipelineRunner:
             )
             df = _apply_remaining_preprocessing(df_mean_per_day, self.config.preprocessing)
             df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
-            return self.restrict_expression_dataframe(df)
+            return self.restrict_expression_dataframe(df) if restrict_to_configured_genes else df
         if dataset_name != "kutsche":
             raise NotImplementedError(
                 "The canonical runner currently supports dataset.name='kutsche', "
@@ -760,12 +836,12 @@ class PipelineRunner:
         )
         df = _apply_remaining_preprocessing(df_filtered, self.config.preprocessing)
         df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
-        return self.restrict_expression_dataframe(df)
+        return self.restrict_expression_dataframe(df) if restrict_to_configured_genes else df
 
     def restrict_expression_dataframe(self, df):
         """Restrict expression data to configured full-dataset and seed genes when present."""
-        full_genes = load_seed_genes(self.config.dataset.full_gene_file)
         seed_genes = load_seed_genes(self.config.seed_gene_file)
+        full_genes = load_seed_genes(self.config.dataset.full_gene_file) if self.config.dataset.full_gene_file else []
         requested = list(dict.fromkeys([*full_genes, *seed_genes]))
         available = [gene for gene in requested if gene in df.index]
         if not available:
@@ -792,7 +868,10 @@ class PipelineRunner:
         output.parent.mkdir(parents=True, exist_ok=True)
         genes = load_seed_genes(genes_file)
         if list_to_full_dataset:
-            dataset_genes = load_seed_genes(self.config.dataset.full_gene_file)
+            if self.config.dataset.full_gene_file:
+                dataset_genes = load_seed_genes(self.config.dataset.full_gene_file)
+            else:
+                dataset_genes = list(self.load_expression_dataframe(restrict_to_configured_genes=False).index)
             discoverable_genes = dataset_genes[: min(len(dataset_genes), 150)]
             pairs = [(gene, target) for gene in genes for target in discoverable_genes if target != gene]
             pairs += [(source, gene) for source in discoverable_genes for gene in genes if source != gene]
@@ -853,7 +932,7 @@ class PipelineRunner:
             result = self.run_fixture_gc(self.config.seed_gene_file, output, list_to_full_dataset=False)
         else:
             require_available_backend("gc", self.config.execution.gc_backend, device=self.config.execution.gpu_device)
-            expression_df = self.load_expression_dataframe()
+            expression_df = self.load_expression_dataframe(restrict_to_configured_genes=False)
             validate_expression_dataframe(
                 expression_df,
                 gene_of_interest=self.config.gene_of_interest,
@@ -942,6 +1021,7 @@ class PipelineRunner:
         )
         self.artifacts["seed_frequency_csv"] = priority
         self.artifacts["seed_consensus_history_json"] = history_json
+        self.artifacts["seed_consensus_progress_jsonl"] = result.progress_jsonl
         self.artifacts["seed_network_graphml"] = network_artifacts["graphml"]
         self.artifacts["seed_network_edges_csv"] = network_artifacts["edge_csv"]
         self.artifacts["seed_network_nodes_file"] = network_artifacts["node_txt"]
@@ -957,6 +1037,7 @@ class PipelineRunner:
         outputs = {
             "seed_frequency_csv": priority,
             "seed_consensus_history_json": history_json,
+            "seed_consensus_progress_jsonl": result.progress_jsonl,
             "seed_network_graphml": network_artifacts["graphml"],
             "seed_network_edges_csv": network_artifacts["edge_csv"],
             "seed_network_nodes_file": network_artifacts["node_txt"],
@@ -1050,9 +1131,14 @@ class PipelineRunner:
         output = self.default_artifacts()["probe_gc_csv"]
         if self.config.dataset.name.lower() == "fixture":
             result = self.run_fixture_gc(probe_genes, output, list_to_full_dataset=True)
+            dataset_genes_file = self.config.dataset.full_gene_file
+            dataset_gene_count = _count_text_lines(dataset_genes_file) if dataset_genes_file else None
         else:
             require_available_backend("gc", self.config.execution.gc_backend, device=self.config.execution.gpu_device)
-            expression_df = self.load_expression_dataframe()
+            expression_df = self.load_expression_dataframe(restrict_to_configured_genes=False)
+            dataset_genes_file = _write_gene_list(expression_df.index, self.default_artifacts()["dataset_genes_file"])
+            self.artifacts["dataset_genes_file"] = dataset_genes_file
+            dataset_gene_count = len(expression_df.index)
             validate_expression_dataframe(
                 expression_df,
                 gene_of_interest=self.config.gene_of_interest,
@@ -1077,10 +1163,13 @@ class PipelineRunner:
             )
         validate_gc_csv(output)
         self.artifacts["probe_gc_csv"] = Path(result["output_file"])
+        inputs = {"probe_genes_file": probe_genes, "expression_file": self.config.dataset.expression_file}
+        if dataset_genes_file:
+            inputs["dataset_genes_file"] = dataset_genes_file
         self.write_manifest(
             stage,
             "completed",
-            inputs={"probe_genes_file": probe_genes, "expression_file": self.config.dataset.expression_file},
+            inputs=inputs,
             outputs={"probe_gc_csv": output},
             parameters={
                 "p_value_threshold": self.config.network.p_value_threshold,
@@ -1098,7 +1187,8 @@ class PipelineRunner:
                     device=self.config.execution.gpu_device,
                 ).to_dict(),
                 "probe_gene_count": _count_text_lines(probe_genes),
-                "dataset_gene_count": _count_text_lines(resolve_existing_path(self.config.dataset.full_gene_file)),
+                "dataset_gene_count": dataset_gene_count,
+                "dataset_genes_source": "expression_matrix" if self.config.dataset.name.lower() != "fixture" else "configured_full_gene_file",
                 "gc_pairs_total": _gc_total_pairs(result, output),
                 "gc_rows_written": _count_csv_rows(output),
                 "gc_elapsed_seconds": result.get("elapsed_seconds"),
@@ -1122,9 +1212,15 @@ class PipelineRunner:
                 output_gene_list=output,
             )
         )
-        validate_gene_list_file(
+        expanded_gene_list = validate_gene_list_file(
             output,
             label="expanded_genes_file",
+            min_genes=2,
+            required_gene=self.config.gene_of_interest,
+        )
+        seed_gene_list = validate_gene_list_file(
+            self.config.seed_gene_file,
+            label="seed_gene_file",
             min_genes=2,
             required_gene=self.config.gene_of_interest,
         )
@@ -1144,7 +1240,10 @@ class PipelineRunner:
         }
         if "svg" in network_artifacts:
             outputs["probe_network_svg"] = network_artifacts["svg"]
-        metrics = {**_network_metrics(network_artifacts["summary_json"]), "expanded_gene_count": _count_text_lines(output)}
+        metrics = {
+            **_network_metrics(network_artifacts["summary_json"]),
+            **_expanded_gene_set_metrics(expanded_gene_list, seed_gene_list),
+        }
         self.write_manifest(
             stage,
             "completed",
@@ -1170,6 +1269,12 @@ class PipelineRunner:
         expanded_gene_list = validate_gene_list_file(
             expanded_genes,
             label="expanded_genes_file",
+            min_genes=2,
+            required_gene=self.config.gene_of_interest,
+        )
+        seed_gene_list = validate_gene_list_file(
+            self.config.seed_gene_file,
+            label="seed_gene_file",
             min_genes=2,
             required_gene=self.config.gene_of_interest,
         )
@@ -1223,7 +1328,7 @@ class PipelineRunner:
                     self.config.execution.gc_backend,
                     device=self.config.execution.gpu_device,
                 ).to_dict(),
-                "expanded_gene_count": _count_text_lines(expanded_genes),
+                **_expanded_gene_set_metrics(expanded_gene_list, seed_gene_list),
                 "gc_pairs_total": _gc_total_pairs(result, output),
                 "gc_rows_written": _count_csv_rows(output),
                 "gc_elapsed_seconds": result.get("elapsed_seconds"),
@@ -1267,6 +1372,7 @@ class PipelineRunner:
         )
         self.artifacts["priority_genes_csv"] = priority
         self.artifacts["expanded_consensus_history_json"] = history_json
+        self.artifacts["expanded_consensus_progress_jsonl"] = result.progress_jsonl
         self.artifacts["expanded_network_graphml"] = network_artifacts["graphml"]
         self.artifacts["expanded_network_edges_csv"] = network_artifacts["edge_csv"]
         self.artifacts["expanded_network_nodes_file"] = network_artifacts["node_txt"]
@@ -1282,6 +1388,7 @@ class PipelineRunner:
         outputs = {
             "priority_genes_csv": priority,
             "expanded_consensus_history_json": history_json,
+            "expanded_consensus_progress_jsonl": result.progress_jsonl,
             "expanded_network_graphml": network_artifacts["graphml"],
             "expanded_network_edges_csv": network_artifacts["edge_csv"],
             "expanded_network_nodes_file": network_artifacts["node_txt"],
@@ -1331,7 +1438,7 @@ def _config_to_dict(config: PipelineConfig) -> dict[str, Any]:
         "dataset": {
             "name": config.dataset.name,
             "expression_file": str(config.dataset.expression_file),
-            "full_gene_file": str(config.dataset.full_gene_file),
+            "full_gene_file": str(config.dataset.full_gene_file) if config.dataset.full_gene_file else None,
         },
         "gene_of_interest": config.gene_of_interest,
         "seed_gene_file": str(config.seed_gene_file),

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import os
+import json
+import logging
 from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
@@ -21,6 +23,9 @@ from gene_analysis.analysis.consensus_backend import (
 from gene_analysis.analysis.backends import backend_metadata, require_available_backend
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True)
 class StableConsensusResult:
     """Result metadata returned after a stability-controlled consensus run."""
@@ -31,6 +36,7 @@ class StableConsensusResult:
     stable: bool
     metrics: dict[str, int | float | str | bool | None]
     history: list[dict[str, int | float | bool | None]]
+    progress_jsonl: Path
 
 
 def _partition_metrics(partitions: list[dict], gene_of_interest: str) -> dict[str, int | float]:
@@ -118,6 +124,8 @@ def run_stable_consensus(
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     setup_logging(log_file=str(output_dir / "consensus.log"))
+    progress_jsonl = output_dir / "consensus_progress.jsonl"
+    progress_jsonl.write_text("", encoding="utf-8")
 
     significant_edges = collect_significant_edges(
         None,
@@ -141,8 +149,21 @@ def run_stable_consensus(
         top_fraction=0.05,
         top_k=None,
     )
+    logger.info(
+        "Consensus stopping criteria: Q(%.2f) relative change <= %.6f AND top-5%% overlap >= %.2f%%.",
+        stability_quantile,
+        config.stability_tolerance,
+        top_overlap_threshold_percent,
+    )
 
     while True:
+        previous_runs = len(partitions)
+        logger.info(
+            "Consensus stability iteration starting: target runs=%d, previous runs=%d, new runs=%d.",
+            current_runs,
+            previous_runs,
+            max(0, current_runs - previous_runs),
+        )
         consensus, coassoc, partitions, unique_goi_genes, nodes, coassoc_state = consensus_partition(
             graph,
             undirected_graph,
@@ -169,19 +190,30 @@ def run_stable_consensus(
         q_rel = None
         overlap_pct = None
         top_k = None
+        q_rel_passed = None
+        overlap_passed = None
         if previous_freq_csv_path is not None:
             q_rel, overlap_pct, top_k = compute_csv_stability_metrics(
                 str(previous_freq_csv_path),
                 str(current_freq_csv_path),
                 cfg=csv_cfg,
             )
+            q_rel_passed = q_rel <= config.stability_tolerance
+            overlap_passed = overlap_pct >= top_overlap_threshold_percent
+        next_runs = current_runs + max(1, int(math.floor(current_runs * run_increment_fraction)))
         iteration_metrics = {
             "runs": current_runs,
             "frequency_csv": str(current_freq_csv_path),
             "backend": backend,
             "stability_quantile_relative_change": q_rel,
+            "stability_quantile": stability_quantile,
+            "stability_tolerance": config.stability_tolerance,
+            "stability_quantile_passed": q_rel_passed,
             "top_gene_overlap_percent": overlap_pct,
             "top_gene_overlap_k": top_k,
+            "top_overlap_threshold_percent": top_overlap_threshold_percent,
+            "top_gene_overlap_passed": overlap_passed,
+            "next_runs_if_unstable": next_runs,
             "stable": bool(
                 previous_freq_csv_path is not None
                 and q_rel <= config.stability_tolerance
@@ -193,8 +225,11 @@ def run_stable_consensus(
             **_consensus_metrics(consensus, config.gene_of_interest),
         }
         history.append(iteration_metrics)
+        _append_progress_jsonl(progress_jsonl, iteration_metrics)
+        _log_consensus_iteration(iteration_metrics)
 
         if iteration_metrics["stable"]:
+            logger.info("Consensus stopping criteria met at %d runs.", current_runs)
             metrics = {
                 "final_runs": current_runs,
                 "stable": True,
@@ -205,7 +240,50 @@ def run_stable_consensus(
                 "backend_metadata": backend_metadata("consensus", backend, device=gpu_device).to_dict(),
                 **{key: value for key, value in iteration_metrics.items() if key not in {"frequency_csv", "stable"}},
             }
-            return StableConsensusResult(output_dir, current_freq_csv_path, current_runs, True, metrics, history)
+            return StableConsensusResult(output_dir, current_freq_csv_path, current_runs, True, metrics, history, progress_jsonl)
 
         previous_freq_csv_path = current_freq_csv_path
-        current_runs += max(1, int(math.floor(current_runs * run_increment_fraction)))
+        logger.info(
+            "Consensus stopping criteria not met; increasing target runs from %d to %d.",
+            current_runs,
+            next_runs,
+        )
+        current_runs = next_runs
+
+
+def _append_progress_jsonl(path: Path, metrics: dict[str, int | float | str | bool | None]) -> None:
+    """Append one stability-iteration record for live job monitoring."""
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(metrics, sort_keys=True) + "\n")
+
+
+def _log_consensus_iteration(metrics: dict[str, int | float | str | bool | None]) -> None:
+    """Log a human-readable summary of consensus stopping criteria."""
+    runs = int(metrics["runs"])
+    q_rel = metrics.get("stability_quantile_relative_change")
+    overlap = metrics.get("top_gene_overlap_percent")
+    if q_rel is None or overlap is None:
+        logger.info(
+            "Consensus stability after %d runs: baseline iteration written; "
+            "criteria can be evaluated after the next increment.",
+            runs,
+        )
+        return
+
+    q_pass = bool(metrics.get("stability_quantile_passed"))
+    overlap_pass = bool(metrics.get("top_gene_overlap_passed"))
+    stable = bool(metrics.get("stable"))
+    logger.info(
+        "Consensus stability after %d runs: Q(%.2f) rel-change %.6f <= %.6f [%s]; "
+        "top-%s overlap %.2f%% >= %.2f%% [%s]; stable=%s.",
+        runs,
+        float(metrics["stability_quantile"]),
+        float(q_rel),
+        float(metrics["stability_tolerance"]),
+        "OK" if q_pass else "WAIT",
+        metrics.get("top_gene_overlap_k"),
+        float(overlap),
+        float(metrics["top_overlap_threshold_percent"]),
+        "OK" if overlap_pass else "WAIT",
+        stable,
+    )

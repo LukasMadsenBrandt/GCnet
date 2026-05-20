@@ -6,7 +6,6 @@ run_name: mecp2_benito_human_gpu_b200_00015
 dataset:
   name: benito_human
   expression_file: Data/Benito/Benito_Human
-  full_gene_file: Data/Benito/unique_genes.txt
 
 gene_of_interest: MECP2
 seed_gene_file: Data/Benito/unique_genes.txt

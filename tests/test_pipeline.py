@@ -8,6 +8,7 @@ import pytest
 import gene_analysis.io.paths as paths
 from gene_analysis.pipeline.config import (
     DatasetConfig,
+    ExecutionConfig,
     ExpansionConfig,
     NetworkConfig,
     PreprocessingConfig,
@@ -215,7 +216,8 @@ def test_dataset_pipeline_configs_load():
     ):
         cfg = PipelineConfig.from_yaml(path)
         assert cfg.dataset.expression_file
-        assert cfg.dataset.full_gene_file
+        if "production/" not in path:
+            assert cfg.dataset.full_gene_file
         assert cfg.seed_gene_file
         assert cfg.network.write_svg is True
         assert cfg.network.svg_renderer == "networkx"
@@ -467,6 +469,57 @@ def test_runner_stage_05_from_configured_artifact(tmp_path, monkeypatch):
     assert artifacts["expanded_genes_file"].read_text(encoding="utf-8").splitlines() == ["A", "B", "MECP2", "ZEB2"]
     manifest = json.loads((cfg.run_dir / "05_expanded_genes" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["parameters"]["p_value_threshold"] == pytest.approx(0.01)
+    assert manifest["metrics"]["seed_gene_count"] == 2
+    assert manifest["metrics"]["expanded_gene_count"] == 4
+    assert manifest["metrics"]["expanded_seed_overlap_count"] == 2
+    assert manifest["metrics"]["expanded_new_gene_count"] == 2
+    assert manifest["metrics"]["expanded_new_gene_percent"] == pytest.approx(50.0)
+    assert manifest["metrics"]["seed_gene_retention_percent"] == pytest.approx(100.0)
+
+
+def test_run_summary_warns_when_seed_list_is_full_gene_list(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
+    probe_gc = tmp_path / "probe_gc.csv"
+    probe_gc.write_text("gene1,gene2,lag,p-value\nZEB2,MECP2,1,0.001\n", encoding="utf-8")
+    cfg = make_pipeline_config(tmp_path, run_name="seed_equals_full", artifacts={"probe_gc_csv": probe_gc})
+    cfg.dataset.full_gene_file.write_text("ZEB2\nMECP2\n", encoding="utf-8")
+
+    artifacts = PipelineRunner(cfg).run(start_at="05_expanded_genes", stop_after="05_expanded_genes")
+
+    summary = artifacts["run_summary_md"].read_text(encoding="utf-8")
+    manifest = json.loads((cfg.run_dir / "05_expanded_genes" / "manifest.json").read_text(encoding="utf-8"))
+    assert "New genes" in summary
+    assert "The configured seed gene list overlaps almost completely with the full gene list" in summary
+    assert manifest["metrics"]["expanded_new_gene_count"] == 0
+
+
+def test_dataset_probe_derives_full_gene_landscape_from_expression(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
+    expression_file = tmp_path / "expression.csv"
+    seed_file = tmp_path / "seeds.txt"
+    probe_file = tmp_path / "probe_genes.txt"
+    expression_file.write_text(
+        "Gene,T1,T2,T3,T4,T5\nZEB2,1,2,3,4,5\nA,2,3,4,5,6\nB,5,4,3,2,1\n",
+        encoding="utf-8",
+    )
+    seed_file.write_text("ZEB2\n", encoding="utf-8")
+    probe_file.write_text("ZEB2\n", encoding="utf-8")
+    cfg = PipelineConfig(
+        run_name="derived_landscape",
+        dataset=DatasetConfig(name="generic_expression", expression_file=expression_file),
+        gene_of_interest="ZEB2",
+        seed_gene_file=seed_file,
+        artifacts={"probe_genes_file": probe_file},
+        execution=ExecutionConfig(max_workers=1, chunk_size=10, resume=False),
+    )
+
+    artifacts = PipelineRunner(cfg).run(start_at="04_dataset_probe", stop_after="04_dataset_probe")
+
+    manifest = json.loads((cfg.run_dir / "04_dataset_probe" / "manifest.json").read_text(encoding="utf-8"))
+    assert artifacts["dataset_genes_file"].read_text(encoding="utf-8").splitlines() == ["A", "B", "ZEB2"]
+    assert manifest["metrics"]["dataset_gene_count"] == 3
+    assert manifest["metrics"]["dataset_genes_source"] == "expression_matrix"
+    assert manifest["metrics"]["gc_pairs_total"] == 4
 
 
 @pytest.mark.integration
@@ -497,6 +550,10 @@ def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
     assert artifacts["seed_top_consensus_network_svg"].exists()
     assert artifacts["seed_top_consensus_network_edges_csv"].exists()
     assert artifacts["seed_consensus_history_json"].exists()
+    assert artifacts["seed_consensus_progress_jsonl"].exists()
+    seed_progress = artifacts["seed_consensus_progress_jsonl"].read_text(encoding="utf-8").splitlines()
+    assert seed_progress
+    assert "stability_tolerance" in json.loads(seed_progress[-1])
     assert artifacts["probe_genes_file"].exists()
     assert artifacts["probe_gc_csv"].exists()
     assert artifacts["expanded_genes_file"].exists()
@@ -506,6 +563,7 @@ def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
     assert artifacts["expanded_gc_csv"].exists()
     assert artifacts["priority_genes_csv"].exists()
     assert artifacts["expanded_consensus_history_json"].exists()
+    assert artifacts["expanded_consensus_progress_jsonl"].exists()
     assert artifacts["expanded_network_graphml"].exists()
     assert artifacts["expanded_network_svg"].exists()
     assert artifacts["expanded_network_edges_csv"].exists()

@@ -42,7 +42,7 @@ pipeline run.
 | `01_seed_gc` | Directed GC among seed genes | `seed_gene_file`, `dataset.expression_file`, `network.p_value_threshold` | none | `seed_gc_csv` |
 | `02_seed_consensus` | Significant seed network + stable GOI Louvain consensus | `gene_of_interest`, `network`, `consensus` | `seed_gc_csv` | `seed_frequency_csv`, seed network files, top-5%-consensus network files |
 | `03_probe_selection` | Select high-frequency GOI-community genes | `probe_selection`, `gene_of_interest` | `seed_frequency_csv` | `probe_genes_file` |
-| `04_dataset_probe` | Bidirectional probe GC against the full dataset | `dataset.expression_file`, `dataset.full_gene_file`, `network` | `probe_genes_file` | `probe_gc_csv` |
+| `04_dataset_probe` | Bidirectional probe GC against the full dataset | `dataset.expression_file`, `network` | `probe_genes_file` | `probe_gc_csv`, derived `dataset_genes.txt` |
 | `05_expanded_genes` | Build probe network and extract expanded genes | `gene_of_interest`, `network`, `seed_gene_file` | `probe_gc_csv` | `expanded_genes_file`, probe network files |
 | `06_expanded_gc` | Directed GC among expanded genes | `dataset.expression_file`, `network` | `expanded_genes_file` | `expanded_gc_csv` |
 | `07_expanded_consensus` | Expanded significant network + final priority list | `gene_of_interest`, `network`, `consensus` | `expanded_gc_csv` | `priority_genes_csv`, expanded network files, top-5%-consensus network files |
@@ -72,12 +72,12 @@ stage is available in
 | Stage | Primary Question | First Files To Inspect | Main Scientific Use |
 | --- | --- | --- | --- |
 | `01_seed_gc` | Which directed GC relationships exist inside the curated seed set? | `seed_gc.csv`, `manifest.json` | Verify the seed-pair search space and retain the directed GC evidence used to build the seed network. |
-| `02_seed_consensus` | Which seed-network genes repeatedly cluster with the GOI? | `priority_genes.csv`, `seed_network.svg`, `seed_top_consensus_network.svg`, `consensus_history.json` | Choose high-confidence GOI-community genes for probing and inspect their subcommunities. |
+| `02_seed_consensus` | Which seed-network genes repeatedly cluster with the GOI? | `priority_genes.csv`, `seed_network.svg`, `seed_top_consensus_network.svg`, `consensus_progress.jsonl`, `consensus_history.json` | Choose high-confidence GOI-community genes for probing and inspect their subcommunities. |
 | `03_probe_selection` | Which consensus genes will probe the full dataset? | `probe_genes.txt`, `manifest.json` | Confirm the configured top-percent or frequency-cutoff selection before the broad probe stage. |
 | `04_dataset_probe` | Which full-dataset genes connect to the selected probe genes? | `probe_gc.csv`, `manifest.json` | Generate directed evidence for newly suggested candidate genes without brute-forcing all dataset pairs. |
 | `05_expanded_genes` | Which genes are in the significant probe network? | `expanded_genes.txt`, `probe_network.svg`, `probe_network_summary.json` | Define the expanded candidate set `n` for the final focused GC run. |
 | `06_expanded_gc` | What are the directed GC relationships inside `n`? | `expanded_gc.csv`, `manifest.json` | Confirm final GC was run on `n * (n - 1)` candidate pairs, not all dataset genes. |
-| `07_expanded_consensus` | Which expanded genes are the strongest biological priorities? | `priority_genes.csv`, `expanded_top_consensus_network.svg`, `expanded_network_summary.json`, `consensus_history.json` | Use the sorted priority list for biological follow-up and inspect top-candidate subcommunities. |
+| `07_expanded_consensus` | Which expanded genes are the strongest biological priorities? | `priority_genes.csv`, `expanded_top_consensus_network.svg`, `expanded_network_summary.json`, `consensus_progress.jsonl`, `consensus_history.json` | Use the sorted priority list for biological follow-up and inspect top-candidate subcommunities. |
 
 ## Artifact Keys
 
@@ -109,6 +109,7 @@ subnetworks. SVG keys are produced only when `network.write_svg: true`:
 | `seed_top_consensus_network_graphml` | `results/pipeline/<run>/02_seed_consensus/seed_top_consensus_network.graphml` |
 | `seed_top_consensus_network_svg` | `results/pipeline/<run>/02_seed_consensus/seed_top_consensus_network.svg` |
 | `seed_top_consensus_network_summary_json` | `results/pipeline/<run>/02_seed_consensus/seed_top_consensus_network_summary.json` |
+| `seed_consensus_progress_jsonl` | `results/pipeline/<run>/02_seed_consensus/consensus_progress.jsonl` |
 | `seed_consensus_history_json` | `results/pipeline/<run>/02_seed_consensus/consensus_history.json` |
 | `probe_network_edges_csv` | `results/pipeline/<run>/05_expanded_genes/probe_network_edges.csv` |
 | `probe_network_nodes_file` | `results/pipeline/<run>/05_expanded_genes/probe_network_nodes.txt` |
@@ -125,6 +126,7 @@ subnetworks. SVG keys are produced only when `network.write_svg: true`:
 | `expanded_top_consensus_network_graphml` | `results/pipeline/<run>/07_expanded_consensus/expanded_top_consensus_network.graphml` |
 | `expanded_top_consensus_network_svg` | `results/pipeline/<run>/07_expanded_consensus/expanded_top_consensus_network.svg` |
 | `expanded_top_consensus_network_summary_json` | `results/pipeline/<run>/07_expanded_consensus/expanded_top_consensus_network_summary.json` |
+| `expanded_consensus_progress_jsonl` | `results/pipeline/<run>/07_expanded_consensus/consensus_progress.jsonl` |
 | `expanded_consensus_history_json` | `results/pipeline/<run>/07_expanded_consensus/consensus_history.json` |
 
 Run-level figure copies are also produced when SVG previews are enabled:
@@ -175,6 +177,17 @@ Network stages report metrics such as:
 - `largest_strong_component_genes`
 - GOI in-degree, out-degree, and total degree
 
+The expanded-gene stage also reports how much the probe network grew beyond the
+original seed list:
+
+- `seed_gene_count`
+- `expanded_gene_count`
+- `expanded_seed_overlap_count`
+- `expanded_new_gene_count`
+- `expanded_seed_overlap_percent`
+- `expanded_new_gene_percent`
+- `seed_gene_retention_percent`
+
 Consensus stages additionally report:
 
 - `final_runs`
@@ -194,9 +207,12 @@ Consensus stages additionally report:
 - average/min/max Louvain community counts across partitions
 - average/min/max Louvain GOI-community size across partitions
 
-The `consensus_history.json` files keep these values for every stability
-increment, so the run documents how many partitions were needed before the
-frequency ranking stabilized.
+During a running consensus stage, `consensus.log` prints the stopping criteria
+after each increment and `consensus_progress.jsonl` appends one JSON object per
+increment. Use those live files to see whether the quantile relative-change and
+top-gene-overlap checks are moving toward their thresholds. After completion,
+`consensus_history.json` keeps the same per-increment values in a formatted JSON
+array for audit and reporting.
 
 ## Validation
 

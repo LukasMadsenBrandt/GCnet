@@ -12,7 +12,10 @@ Every run needs these inputs in the YAML config:
   `benito_gorilla`. The older `sample_real_gc` name is kept as a sample alias.
 - `dataset.expression_file`: expression matrix or raw count file for that
   dataset type.
-- `dataset.full_gene_file`: one gene symbol per line for the searchable dataset.
+- `dataset.full_gene_file`: optional legacy/search-space override. Production
+  runs normally omit it so the searchable full gene landscape is derived from
+  the expression matrix after dataset-specific preprocessing and gene-name
+  mapping.
 - `gene_of_interest`: the gene used for coassociation ranking, such as `ZEB2`
   or `MECP2`.
 - `seed_gene_file`: one curated seed gene symbol per line.
@@ -20,8 +23,8 @@ Every run needs these inputs in the YAML config:
   aggregation settings.
 
 The gene of interest should appear in both the seed gene list and the expression
-matrix. Seed genes and full-dataset genes must use the same identifiers as the
-expression matrix after preprocessing.
+matrix. Seed genes must use the same identifiers as the expression matrix after
+preprocessing.
 
 ## Generic Preprocessed Matrix
 
@@ -44,7 +47,7 @@ Requirements:
 - remaining columns must be ordered timepoints or ordered conditions;
 - all expression values must be numeric;
 - no duplicate gene names;
-- gene symbols must match `seed_gene_file` and `dataset.full_gene_file`;
+- gene symbols must match `seed_gene_file`;
 - at least 5 ordered timepoint/condition columns are required by the generic
   loader; more timepoints are preferable for more robust Granger causality.
 
@@ -58,7 +61,6 @@ Start from `configs/templates/gene_expansion.generic_example.yml`:
 dataset:
   name: generic_expression
   expression_file: Data/MyDataset/expression.csv
-  full_gene_file: Data/MyDataset/genes_all.txt
 
 gene_of_interest: ZEB2
 seed_gene_file: Data/MyDataset/seed_genes.txt
@@ -100,7 +102,6 @@ one value per day. It can be `robust`, `mean`, or `median`.
 Production Kutsche configs expect:
 
 - `Data/Kutsche/Kutsche_Counts.txt`
-- `Data/Kutsche/genes_all.txt`
 - `Data/Kutsche/unique_genes.txt`
 
 `Kutsche_Counts.txt` is local-only and not committed to GitHub. It should be a
@@ -109,8 +110,9 @@ columns are numeric expression columns. The current loader extracts columns
 containing `WT`, orders them by day from names containing `d<day>`, removes
 all-zero genes, and aggregates replicates by robust weighted mean.
 
-`genes_all.txt` is the searchable gene universe, one gene per line.
-`unique_genes.txt` is the curated seed set, one gene per line.
+`unique_genes.txt` is the curated seed set, one gene per line. The searchable
+gene universe is derived from `Kutsche_Counts.txt` after WT filtering,
+preprocessing, and replicate aggregation.
 
 ## Benito Datasets
 
@@ -121,6 +123,10 @@ Production Benito configs expect:
 - `Data/Benito/unique_genes.txt`
 - `Data/Benito/gene_id_to_gene_name.txt`
 - `Data/Benito/map_speciment_to_gene.csv`
+
+`unique_genes.txt` is the curated seed set, one gene per line. The searchable
+gene universe is derived from `Benito_Human` or `Benito_Gorilla` after gene-name
+mapping, replicate filtering, preprocessing, and duplicate-symbol aggregation.
 
 `Benito_Human` and `Benito_Gorilla` are local-only and not committed to GitHub.
 They should be featureCounts-style tab-separated files with metadata on the
@@ -159,7 +165,6 @@ Before launching a production run:
 - confirm `gene_of_interest` appears in the seed list and processed expression
   matrix;
 - confirm all seed genes are present after preprocessing;
-- confirm the full gene list uses the same gene identifiers as the matrix;
 - remove duplicate gene names from gene lists;
 - choose preprocessing settings before comparing runs;
 - choose a p-value threshold and probe-selection rule deliberately;
