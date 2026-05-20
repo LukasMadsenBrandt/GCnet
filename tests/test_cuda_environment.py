@@ -4,7 +4,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from gene_analysis.analysis.cuda_environment import collect_cuda_environment_report, write_cuda_environment_report
+from gene_analysis.analysis.cuda_environment import (
+    _cupy_nvrtc_note,
+    collect_cuda_environment_report,
+    write_cuda_environment_report,
+)
 
 
 pytestmark = pytest.mark.unit
@@ -31,6 +35,17 @@ def test_write_cuda_environment_report_writes_json(tmp_path):
     assert "cupy_gc_ready" in data
     assert "cugraph_consensus_ready" in data
     assert "cugraph_error" in data
+
+
+def test_cupy_nvrtc_loader_error_gets_actionable_note():
+    note = _cupy_nvrtc_note(
+        "RuntimeError('CuPy failed to load libnvrtc.so.12: "
+        "OSError: libnvrtc.so.12: cannot open shared object file')"
+    )
+
+    assert note is not None
+    assert "nvidia-cuda-nvrtc-cu12" in note
+    assert "LD_LIBRARY_PATH" in note
 
 
 def test_cuda_environment_files_are_parseable_and_separate_from_cpu_requirements():

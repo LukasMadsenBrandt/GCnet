@@ -104,6 +104,10 @@ def collect_cuda_environment_report() -> CudaEnvironmentReport:
         notes.append("nvidia-smi is not available; on HPC this may require an allocated GPU node.")
     if not package_map["cupy"].available:
         notes.append("CuPy is missing; GPU GC experiments cannot run yet.")
+    if cupy_error:
+        nvrtc_note = _cupy_nvrtc_note(cupy_error)
+        if nvrtc_note:
+            notes.append(nvrtc_note)
     if not package_map["cugraph"].available:
         notes.append("cuGraph is missing; GPU consensus cannot run yet.")
     if package_map["cugraph"].available and cugraph_error:
@@ -209,3 +213,15 @@ def _compute_capability_float(value: str | None) -> float:
         return float(value)
     except ValueError:
         return 0.0
+
+
+def _cupy_nvrtc_note(cupy_error: str) -> str | None:
+    """Return an actionable note for CuPy NVRTC dynamic-linker failures."""
+    if "libnvrtc.so.12" not in cupy_error:
+        return None
+    return (
+        "CuPy is installed but the CUDA NVRTC runtime library is not loadable. "
+        "Install `nvidia-cuda-nvrtc-cu12` in the active Python environment or "
+        "load a cluster CUDA 12 module that exposes `libnvrtc.so.12` on "
+        "`LD_LIBRARY_PATH`, then rerun `python scripts/pipeline/check_cuda.py`."
+    )

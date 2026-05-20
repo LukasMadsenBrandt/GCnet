@@ -41,6 +41,28 @@ python scripts/pipeline/check_cuda.py --output-file results/cuda_compatibility.j
 For the recommended `gpu_cuda` backend, `GPU GC ready` must be `True`.
 `GPU consensus ready` is only needed for experimental `gpu_cugraph` work.
 
+If CuPy is available but the GPU check reports a `libnvrtc.so.12` error, the
+CUDA runtime compiler library is not visible from the active environment. For
+pip-based environments, install the optional CUDA requirements from the same
+environment that runs the pipeline:
+
+```sh
+python -m pip install -r requirements-cuda-cupy.txt
+python -m pip show nvidia-cuda-nvrtc-cu12
+python scripts/pipeline/check_cuda.py
+```
+
+On module-based clusters, load the CUDA 12 module that provides
+`libnvrtc.so.12` before activating/running Python, then rerun the check. A good
+diagnostic is:
+
+```sh
+python -c "import nvidia.cuda_nvrtc, pathlib; print(pathlib.Path(nvidia.cuda_nvrtc.__file__).parent)"
+```
+
+If that import fails, the Python environment does not contain the pip-packaged
+NVRTC library.
+
 ## Setup
 
 Conda users can create the CuPy environment with:
