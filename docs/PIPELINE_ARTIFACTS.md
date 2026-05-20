@@ -59,7 +59,10 @@ The run folder writes:
 - `RUN_SUMMARY.md`: human-readable settings, pipeline evolution, key outputs,
   figure links, and the top final priority genes.
 - `run_manifest.json`: machine-readable settings snapshot, all known artifacts,
-  all stage metrics, and a compact `pipeline_evolution` list.
+  compacted stage metrics, and a compact `pipeline_evolution` list. Long gene
+  lists are represented as `{count, preview, truncated}` objects; the complete
+  gene lists live in the stage files such as `*_network_nodes.txt`,
+  `expanded_genes.txt`, and `priority_genes.csv`.
 - `figures/`: copied SVG previews for quick inspection when
   `network.write_svg: true`.
 

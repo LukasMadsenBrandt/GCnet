@@ -228,6 +228,29 @@ def _gc_total_pairs(result: dict[str, Any], output: str | Path) -> int:
     return int(result.get("total_pairs_all") or result.get("total_pairs") or _count_csv_rows(output))
 
 
+def _expected_all_pairs(gene_count: int) -> int:
+    """Return directed all-pairs count excluding self-pairs."""
+    return int(gene_count) * max(0, int(gene_count) - 1)
+
+
+def _compact_metric_value(value: Any) -> Any:
+    """Keep run-level manifests compact when stage metrics contain long lists."""
+    if isinstance(value, list):
+        return {
+            "count": len(value),
+            "preview": value[:10],
+            "truncated": len(value) > 10,
+        }
+    if isinstance(value, dict):
+        return {key: _compact_metric_value(item) for key, item in value.items()}
+    return value
+
+
+def _compact_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    """Return run-manifest metrics without embedding large gene-name arrays."""
+    return {key: _compact_metric_value(value) for key, value in metrics.items()}
+
+
 def _run_configured_gc(
     expression_df,
     *,
@@ -576,7 +599,7 @@ class PipelineRunner:
     def stage_metrics_summary(self, stages: Iterable[str]) -> dict[str, Any]:
         """Return metrics from completed stage manifests for run-level reporting."""
         return {
-            stage: self.read_stage_manifest(stage).get("metrics", {})
+            stage: _compact_metrics(self.read_stage_manifest(stage).get("metrics", {}))
             for stage in stages
             if self.read_stage_manifest(stage)
         }
@@ -1281,13 +1304,18 @@ class PipelineRunner:
         output = self.default_artifacts()["expanded_gc_csv"]
         if self.config.dataset.name.lower() == "fixture":
             result = self.run_fixture_gc(expanded_genes, output, list_to_full_dataset=False)
+            expanded_genes_present = expanded_gene_list
+            expanded_genes_missing = []
         else:
             require_available_backend("gc", self.config.execution.gc_backend, device=self.config.execution.gpu_device)
-            expression_df = self.load_expression_dataframe()
+            expression_df = self.load_expression_dataframe(restrict_to_configured_genes=False)
+            expression_genes = set(map(str, expression_df.index))
+            expanded_genes_present = [gene for gene in expanded_gene_list if gene in expression_genes]
+            expanded_genes_missing = [gene for gene in expanded_gene_list if gene not in expression_genes]
             validate_expression_dataframe(
                 expression_df,
                 gene_of_interest=self.config.gene_of_interest,
-                seed_genes=expanded_gene_list,
+                seed_genes=expanded_genes_present,
                 transform=self.config.preprocessing.transform,
                 min_timepoints=MIN_RECOMMENDED_TIMEPOINTS,
                 min_present_genes=2,
@@ -1305,6 +1333,16 @@ class PipelineRunner:
                 rename_at_end=False,
                 backend=self.config.execution.gc_backend,
                 gpu_device=self.config.execution.gpu_device,
+            )
+        expected_pairs = _expected_all_pairs(len(expanded_genes_present))
+        observed_pairs = _gc_total_pairs(result, output)
+        if observed_pairs != expected_pairs:
+            raise ValueError(
+                "Expanded GC pair count mismatch: "
+                f"expected {expected_pairs} pairs from {len(expanded_genes_present)} expanded genes present "
+                f"in the expression matrix, but backend reported {observed_pairs}. "
+                "Delete stale expanded GC outputs/checkpoints and rerun stage 06, or check that the expanded "
+                "gene file and expression matrix use the same gene identifiers."
             )
         validate_gc_csv(output)
         self.artifacts["expanded_gc_csv"] = Path(result["output_file"])
@@ -1329,7 +1367,10 @@ class PipelineRunner:
                     device=self.config.execution.gpu_device,
                 ).to_dict(),
                 **_expanded_gene_set_metrics(expanded_gene_list, seed_gene_list),
-                "gc_pairs_total": _gc_total_pairs(result, output),
+                "expanded_genes_present_in_expression": len(expanded_genes_present),
+                "expanded_genes_missing_from_expression": len(expanded_genes_missing),
+                "gc_pairs_total": observed_pairs,
+                "expected_gc_pairs_total": expected_pairs,
                 "gc_rows_written": _count_csv_rows(output),
                 "gc_elapsed_seconds": result.get("elapsed_seconds"),
             },

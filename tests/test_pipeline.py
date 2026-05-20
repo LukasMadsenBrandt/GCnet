@@ -522,6 +522,40 @@ def test_dataset_probe_derives_full_gene_landscape_from_expression(tmp_path, mon
     assert manifest["metrics"]["gc_pairs_total"] == 4
 
 
+def test_expanded_gc_uses_expanded_gene_set_against_derived_expression_landscape(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path / "results")
+    expression_file = tmp_path / "expression.csv"
+    seed_file = tmp_path / "seeds.txt"
+    expanded_file = tmp_path / "expanded_genes.txt"
+    expression_file.write_text(
+        "Gene,T1,T2,T3,T4,T5\n"
+        "ZEB2,1,2,3,4,5\n"
+        "A,2,3,4,5,6\n"
+        "B,5,4,3,2,1\n"
+        "C,1,1,2,3,5\n",
+        encoding="utf-8",
+    )
+    seed_file.write_text("ZEB2\nA\n", encoding="utf-8")
+    expanded_file.write_text("ZEB2\nA\nB\n", encoding="utf-8")
+    cfg = PipelineConfig(
+        run_name="expanded_gc_derived_landscape",
+        dataset=DatasetConfig(name="generic_expression", expression_file=expression_file),
+        gene_of_interest="ZEB2",
+        seed_gene_file=seed_file,
+        artifacts={"expanded_genes_file": expanded_file},
+        execution=ExecutionConfig(max_workers=1, chunk_size=10, resume=False),
+    )
+
+    PipelineRunner(cfg).run(start_at="06_expanded_gc", stop_after="06_expanded_gc")
+
+    manifest = json.loads((cfg.run_dir / "06_expanded_gc" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["metrics"]["expanded_gene_count"] == 3
+    assert manifest["metrics"]["expanded_genes_present_in_expression"] == 3
+    assert manifest["metrics"]["expanded_genes_missing_from_expression"] == 0
+    assert manifest["metrics"]["gc_pairs_total"] == 3 * 2
+    assert manifest["metrics"]["expected_gc_pairs_total"] == 3 * 2
+
+
 @pytest.mark.integration
 @pytest.mark.visual
 def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
