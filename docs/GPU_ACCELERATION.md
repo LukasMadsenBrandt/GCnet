@@ -48,13 +48,30 @@ environment that runs the pipeline:
 
 ```sh
 python -m pip install -r requirements-cuda-cupy.txt
+export USER_SITE=$(python -m site --user-site)
+export CUDA_PATH="$USER_SITE/nvidia/cuda_runtime"
+export LD_LIBRARY_PATH="$USER_SITE/nvidia/cuda_runtime/lib:$USER_SITE/nvidia/cuda_nvrtc/lib:$USER_SITE/nvidia/cublas/lib:$USER_SITE/nvidia/cusolver/lib:$USER_SITE/nvidia/cusparse/lib:$USER_SITE/nvidia/nvjitlink/lib:${LD_LIBRARY_PATH:-}"
 python -m pip show nvidia-cuda-nvrtc-cu12
 python scripts/pipeline/check_cuda.py
 ```
 
-On module-based clusters, load the CUDA 12 module that provides
-`libnvrtc.so.12` before activating/running Python, then rerun the check. A good
-diagnostic is:
+If the error changes to `Failed to auto-detect CUDA root directory`, keep the
+same exports and confirm that `nvidia-cuda-runtime-cu12` is installed:
+
+```sh
+python -m pip show nvidia-cuda-runtime-cu12
+```
+
+On module-based clusters, an alternative is to load the CUDA 12 module that
+provides `libnvrtc.so.12`, then point CuPy at that module before running Python:
+
+```sh
+module load cuda/12
+export CUDA_PATH="${CUDA_HOME:-$CUDA_PATH}"
+python scripts/pipeline/check_cuda.py
+```
+
+A useful pip-environment diagnostic is:
 
 ```sh
 python -c "import nvidia.cuda_nvrtc, pathlib; print(pathlib.Path(nvidia.cuda_nvrtc.__file__).parent)"

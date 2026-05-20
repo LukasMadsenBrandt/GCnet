@@ -5,6 +5,7 @@ import pytest
 import yaml
 
 from gene_analysis.analysis.cuda_environment import (
+    _cupy_cuda_root_note,
     _cupy_nvrtc_note,
     collect_cuda_environment_report,
     write_cuda_environment_report,
@@ -48,6 +49,18 @@ def test_cupy_nvrtc_loader_error_gets_actionable_note():
     assert "LD_LIBRARY_PATH" in note
 
 
+def test_cupy_cuda_root_error_gets_actionable_note():
+    note = _cupy_cuda_root_note(
+        "RuntimeError('Failed to auto-detect CUDA root directory. Please "
+        "specify `CUDA_PATH` environment variable if you are using CUDA "
+        "versions not yet supported by CuPy.')"
+    )
+
+    assert note is not None
+    assert "nvidia-cuda-runtime-cu12" in note
+    assert "CUDA_PATH" in note
+
+
 def test_cuda_environment_files_are_parseable_and_separate_from_cpu_requirements():
     root = Path(__file__).resolve().parents[1]
     cpu_requirements = (root / "requirements.txt").read_text(encoding="utf-8")
@@ -56,6 +69,7 @@ def test_cuda_environment_files_are_parseable_and_separate_from_cpu_requirements
     assert "cupy" not in cpu_requirements
     assert "cugraph" not in cpu_requirements
     assert "cupy-cuda12x" in cupy_requirements
+    assert "nvidia-cuda-runtime-cu12" in cupy_requirements
 
     cupy_env = yaml.safe_load((root / "envs" / "cuda-cupy.yml").read_text(encoding="utf-8"))
     rapids_env = yaml.safe_load((root / "envs" / "cuda-rapids.yml").read_text(encoding="utf-8"))

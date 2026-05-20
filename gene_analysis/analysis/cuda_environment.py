@@ -108,6 +108,9 @@ def collect_cuda_environment_report() -> CudaEnvironmentReport:
         nvrtc_note = _cupy_nvrtc_note(cupy_error)
         if nvrtc_note:
             notes.append(nvrtc_note)
+        cuda_root_note = _cupy_cuda_root_note(cupy_error)
+        if cuda_root_note:
+            notes.append(cuda_root_note)
     if not package_map["cugraph"].available:
         notes.append("cuGraph is missing; GPU consensus cannot run yet.")
     if package_map["cugraph"].available and cugraph_error:
@@ -224,4 +227,16 @@ def _cupy_nvrtc_note(cupy_error: str) -> str | None:
         "Install `nvidia-cuda-nvrtc-cu12` in the active Python environment or "
         "load a cluster CUDA 12 module that exposes `libnvrtc.so.12` on "
         "`LD_LIBRARY_PATH`, then rerun `python scripts/pipeline/check_cuda.py`."
+    )
+
+
+def _cupy_cuda_root_note(cupy_error: str) -> str | None:
+    """Return an actionable note for CuPy CUDA root autodetection failures."""
+    if "Failed to auto-detect CUDA root directory" not in cupy_error:
+        return None
+    return (
+        "CuPy can load NVRTC but cannot infer a CUDA root. Install "
+        "`nvidia-cuda-runtime-cu12`, set `CUDA_PATH` to the pip-packaged "
+        "`nvidia/cuda_runtime` directory or a loaded cluster CUDA module, and "
+        "include the CUDA pip-package `lib` directories on `LD_LIBRARY_PATH`."
     )
