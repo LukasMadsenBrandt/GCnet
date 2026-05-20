@@ -115,20 +115,31 @@ Start with the tracked sample:
 python scripts/pipeline/run_pipeline.py --config configs/test/gene_expansion.gpu_sample.yml
 ```
 
-For a new or production-like config, change only the execution block first:
+Production GPU-GC configs for the B200/HPC setup are available for the three
+tracked datasets:
+
+```sh
+python scripts/pipeline/run_pipeline.py --config configs/production/gene_expansion.kutsche.gpu_b200.yml
+python scripts/pipeline/run_pipeline.py --config configs/production/gene_expansion.benito_human.gpu_b200.yml
+python scripts/pipeline/run_pipeline.py --config configs/production/gene_expansion.benito_gorilla.gpu_b200.yml
+```
+
+Those configs keep the validated scientific settings from the CPU production
+configs and change only the run name plus the execution backend:
 
 ```yaml
 execution:
-  max_workers: 32
-  chunk_size: 5000
+  max_workers: null
+  chunk_size: 1000000
   resume: true
   gc_backend: gpu_cuda
   consensus_backend: cpu_louvain
   gpu_device: 0
 ```
 
-Tune `chunk_size` to fit GPU memory. Larger chunks reduce overhead but require
-more memory.
+`max_workers: null` lets CPU Louvain consensus use the allocated CPU cores.
+`chunk_size: 1000000` is intended for high-memory accelerators like the B200.
+If a job runs out of GPU memory, reduce it to `250000` or `100000`.
 
 ## Validation Before Production
 

@@ -196,10 +196,11 @@ from the allocated node:
 python scripts/pipeline/check_cuda.py --output-file results/cuda_compatibility.json
 ```
 
-The production configs intentionally keep `gc_backend: cpu_statsmodels` and
-`consensus_backend: cpu_louvain`. The recommended accelerated production mode
-is `gc_backend: gpu_cuda` with `consensus_backend: cpu_louvain`, after a
-CPU/GPU GC parity benchmark passes on the target hardware.
+The baseline production configs intentionally keep `gc_backend: cpu_statsmodels`
+and `consensus_backend: cpu_louvain`. B200/HPC GPU-GC variants live next to
+them in `configs/production/*.gpu_b200.yml`; they use `gc_backend: gpu_cuda`
+with `consensus_backend: cpu_louvain` after a CPU/GPU GC parity benchmark
+passes on the target hardware.
 
 To validate the experimental CuPy Granger backend against the CPU reference,
 run the same config through the benchmark/parity helper:
