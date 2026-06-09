@@ -1,15 +1,13 @@
-# Gene Analysis Pipeline
+# GCnet: Inferring Dynamic Causal Interactions among Genes in Neuronal Development via Granger Causality with Implications for Intellectual Disability
 
-Guided neurodeficiency gene-expansion pipeline using Granger causality,
-network construction, stability-controlled Louvain consensus, and ranked
-candidate gene lists. Historical dashboard and exploratory scripts are kept
-under `scripts/legacy/`, but the YAML pipeline runner is the main application.
+We model gene expression data collected across multiple time points during in vitro brain development as time series and apply Granger causality to infer dynamic causal dependencies among genes. Based on this approach, we implement GCnet, a framework for constructing directed gene co-expression networks. 
 
-The pipeline is intentionally not brute-force all-pairs discovery first. It
-starts from a curated seed gene set, finds directed GC relationships inside that
-trusted set, uses the strongest seed-network communities to probe the full
-dataset, extracts the discovered network gene set `n`, and only then runs
-expanded GC on `n * (n - 1)` ordered pairs.
+Carrying out the entire Granger causality analysis and the follow-up community detection for networks of larger size (e.g. 45,904 in Kutsche’s data set (Kutsche, et al., 2018)) is possible but rather time-consuming, at least for moderate computational resources. Therefore, we introduce the following heuristic routine, which is applicable with two additional inputs 
+
+a) a predefined list of 2,310 genes from the Human Phenotype Ontology database (Gargano, et al., 2024), and
+b) a guide gene selected from known syndrome-associated genes.
+
+More details of our method can be found in the arXiv https://arxiv.org/abs/2508.05136
 
 ## Quick Start
 
