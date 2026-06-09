@@ -4,7 +4,7 @@ We model gene expression data collected across multiple time points during in vi
 
 Carrying out the entire Granger causality analysis and the follow-up community detection for networks of larger size (e.g. 45,904 in Kutsche’s data set (Kutsche, et al., 2018)) is possible but rather time-consuming, at least for moderate computational resources. Therefore, we introduce the following heuristic routine, which is applicable with two additional inputs 
 
-a) a predefined list of 2,310 genes from the Human Phenotype Ontology database (Gargano, et al., 2024), and
+a) a predefined list of 2,310 genes from the Human Phenotype Ontology database (Gargano, et al., 2024), and <br>
 b) a guide gene selected from known syndrome-associated genes.
 
 More details of our method can be found in the arXiv https://arxiv.org/abs/2508.05136
