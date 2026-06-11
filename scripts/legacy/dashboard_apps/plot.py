@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 import numpy as np
@@ -64,11 +64,25 @@ html.Div("Choose colors for time series plots here", style={'marginBottom': '20p
 ])
 def log_transform_data(df_selected):
     """Apply the app's log transformation to selected expression rows."""
-    #return np.sqrt(df_selected)  # Use np.sqrt for square root transformation
     return np.log1p(df_selected)  # Use np.log1p for log(1 + x) to handle zero values gracefully
-    max_per_row = df_selected.max(axis=1).replace(0, np.nan)
-    normalized = df_selected.div(max_per_row, axis=0)
-    return normalized.fillna(0)  # Or whatever makes sense for your use case
+
+
+def get_plot_data(selected_genes, log_transformed):
+    """Return aggregated and raw selected data in the same plotting scale."""
+    aggregated = df_human.loc[selected_genes]
+    raw = raw_data.loc[selected_genes]
+
+    if log_transformed:
+        return log_transform_data(aggregated), log_transform_data(raw)
+    return aggregated, raw
+
+
+def raw_points_for_gene(raw_gene_values):
+    """Map raw replicate columns to their day-level x/y plotting coordinates."""
+    raw_gene_values = raw_gene_values.dropna()
+    x_raw = [day_map[column] for column in raw_gene_values.index]
+    y_raw = raw_gene_values.values
+    return x_raw, y_raw
 
 
 from dash.dependencies import ALL
@@ -100,42 +114,48 @@ def update_gene_colors(picked_colors, selected_genes, gene_colors):
     [Output('gene-plot', 'figure'),
      Output('log-transform-status', 'children')],
     [Input('gene-selector', 'value'),
-     Input('color-chooser-btn', 'n_clicks'),
-     Input('gene-plot', 'selectedData'),
+     Input('log-transform-btn', 'n_clicks'),
      Input('gene-colors-store', 'data')],
-    [State('log-transform-btn', 'n_clicks_timestamp')]
 )
-def update_plot(selected_genes, n_clicks, selectedData, gene_colors, n_clicks_timestamp):
+def update_plot(selected_genes, log_transform_clicks, gene_colors):
     """Update the expression plot and log-transform status text."""
     if not selected_genes:
         return go.Figure(), ""  # Empty figure
 
     fig = go.Figure()
     x_values = df_human.columns.astype(int)
-    log_transformed = n_clicks % 2 == 1  # Log transform if the button has been clicked an odd number of times
+    log_transform_clicks = log_transform_clicks or 0
+    log_transformed = log_transform_clicks % 2 == 1  # Log transform if clicked an odd number of times
+    plot_data, raw_plot_data = get_plot_data(selected_genes, log_transformed)
+    log_transform_status = "Data LOG transformed" if log_transformed else "Data is not log transformed"
 
-    # Extract selected gene data
-    df_selected = df_human.loc[selected_genes]
-
-    if log_transformed:
-        log_transformed_data = log_transform_data(df_selected)
-        log_transform_status = "Data LOG transformed"
-    else:
-        log_transformed_data = df_selected
-        log_transform_status = "Data is not log transformed"
-
-    for gene, y_values in log_transformed_data.iterrows():
+    for gene, y_values in plot_data.iterrows():
         color = gene_colors.get(gene, None)
         fig.add_trace(go.Scatter(x=x_values, y=y_values.values, mode='lines+markers', name=gene, line=dict(color=color)))
+        raw_x, raw_y = raw_points_for_gene(raw_plot_data.loc[gene])
+        fig.add_trace(go.Scatter(
+            x=raw_x,
+            y=raw_y,
+            mode='markers',
+            name=f"{gene} raw points",
+            marker=dict(color='black', size=8, opacity=0.7),
+            showlegend=False,
+            hovertemplate=(
+                "Gene: %{customdata}<br>"
+                "Day: %{x}<br>"
+                "Raw point: %{y}<extra></extra>"
+            ),
+            customdata=[gene] * len(raw_x),
+        ))
 
     # Apply a consistent layout every time the figure is updated
     yaxis_title = "Normalized Expression Level" if log_transformed else "Expression Level"
 
     # After plotting all genes...
-    y_means = [y.mean() for _, y in log_transformed_data.iterrows()]
+    y_means = [y.mean() for _, y in plot_data.iterrows()]
     overall_mean = np.mean(y_means)
-    y_max = np.max([y.max() for _, y in log_transformed_data.iterrows()])
-    y_min = np.min([y.min() for _, y in log_transformed_data.iterrows()])
+    y_max = np.max([y.max() for _, y in plot_data.iterrows()])
+    y_min = np.min([y.min() for _, y in plot_data.iterrows()])
     y_mid = (y_max + y_min) / 2
 
     # Heuristic: place legend on side with less data
