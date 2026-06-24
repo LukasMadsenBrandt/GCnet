@@ -218,3 +218,7 @@ logs/
 *.sif
 *.old
 .~lock.*
+
+# Curated manuscript materials that should be visible from the GitHub README.
+!/Publication_Material/
+!/Publication_Material/**

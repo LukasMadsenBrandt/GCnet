@@ -9,6 +9,10 @@ b) a guide gene selected from known syndrome-associated genes.
 
 More details of our method can be found in the arXiv https://arxiv.org/abs/2508.05136
 
+## Manuscript Figures and Supplementary Materials
+
+The zoomable SVG figures used for the manuscript and the supplementary files are collected in [Publication Material](Publication_Material/README.md). This folder links directly to the time-series figures, MECP2/ZEB2 neighborhood figures, the supplementary material document, and the supplementary material archive.
+
 ## Quick Start
 
 Python 3.11 is the supported project baseline.
@@ -128,6 +132,7 @@ see [Example pipeline run layout](examples/PIPELINE_RUN_LAYOUT.md).
 | --- | --- |
 | Scientific idea and pipeline flow | [Pipeline concept](docs/PIPELINE_CONCEPT.md) |
 | Exact commands and resume examples | [Workflows](docs/WORKFLOWS.md) |
+| Manuscript figures and supplementary files | [Publication material](Publication_Material/README.md) |
 | Preparing new datasets | [Data preparation](docs/DATA_PREPARATION.md) |
 | Setting up GPU-accelerated GC | [GPU acceleration](docs/GPU_ACCELERATION.md) |
 | Stage inputs, outputs, metrics, networks | [Pipeline artifacts](docs/PIPELINE_ARTIFACTS.md) |
@@ -143,6 +148,7 @@ configs/                  YAML configs for sample and production-style runs
 docs/                     Concise project documentation
 examples/                 Small tracked fixtures
 gene_analysis/            Canonical pipeline and analysis package
+Publication_Material/     Manuscript figures and supplementary materials
 scripts/pipeline/         Supported command-line pipeline tools
 scripts/reporting/        Supported reporting utilities
 scripts/legacy/           Historical dashboards and exploratory scripts

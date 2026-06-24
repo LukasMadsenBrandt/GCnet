@@ -3,7 +3,9 @@ repos:
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^Publication_Material/|.*\.(md|svg|csv|xlsx|docx)$
       - id: end-of-file-fixer
+        exclude: ^Publication_Material/|.*\.(md|svg|csv|xlsx|docx)$
       - id: check-yaml
       - id: check-added-large-files
 
