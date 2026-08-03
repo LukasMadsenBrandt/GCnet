@@ -1,0 +1,42 @@
+run_name: mecp2_benito_micro_human_p005
+
+dataset:
+  name: generic_expression
+  expression_file: examples/benito_micro_real_gc/human_expression.csv
+  full_gene_file: examples/benito_micro_real_gc/all_genes.txt
+
+gene_of_interest: MECP2
+seed_gene_file: examples/benito_micro_real_gc/seed_genes.txt
+
+preprocessing:
+  normalize: none
+  transform: none
+  aggregation: robust
+
+network:
+  p_value_threshold: 0.05
+  write_svg: true
+  svg_renderer: networkx
+  svg_layout: dot
+
+consensus:
+  initial_runs: 5
+  run_increment_fraction: 1.0
+  stability_quantile: 0.90
+  stability_tolerance: 1000000000.0
+  top_overlap_threshold_percent: 0.0
+
+probe_selection:
+  mode: min_frequency
+  top_percent: null
+  min_frequency: 0.95
+
+execution:
+  max_workers: 1
+  chunk_size: 100
+  resume: false
+  gc_backend: cpu_statsmodels
+  consensus_backend: cpu_louvain
+  gpu_device: null
+
+artifacts: {}
