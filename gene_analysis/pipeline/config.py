@@ -122,6 +122,10 @@ class PreprocessingConfig:
     normalize: str = "none"
     transform: str = "none"
     aggregation: str = "robust"
+    export_all_replicates: bool = False
+    export_all_summarized: bool = False
+    export_subset_replicates: bool = False
+    export_subset_summarized: bool = False
 
     def validate(self) -> None:
         """Raise ``ValueError`` when preprocessing settings are unsupported."""
@@ -134,6 +138,15 @@ class PreprocessingConfig:
             raise ValueError("preprocessing.transform must be one of: none, log1p, sqrt.")
         if aggregation not in {"robust", "mean", "median"}:
             raise ValueError("preprocessing.aggregation must be one of: robust, mean, median.")
+        export_options = {
+            "export_all_replicates": self.export_all_replicates,
+            "export_all_summarized": self.export_all_summarized,
+            "export_subset_replicates": self.export_subset_replicates,
+            "export_subset_summarized": self.export_subset_summarized,
+        }
+        for name, value in export_options.items():
+            if not isinstance(value, bool):
+                raise ValueError(f"preprocessing.{name} must be true or false.")
 
 
 @dataclass(frozen=True)
@@ -191,6 +204,8 @@ class ExecutionConfig:
     gc_backend: str = "cpu_statsmodels"
     consensus_backend: str = "cpu_louvain"
     gpu_device: Optional[int] = None
+    seed_gc_store_all_pairs: bool = False
+    progress: bool = True
 
     def validate(self) -> None:
         """Raise ``ValueError`` when worker or chunk-size settings are invalid."""
@@ -200,4 +215,8 @@ class ExecutionConfig:
             raise ValueError("execution.chunk_size must be at least 1.")
         if self.gpu_device is not None and int(self.gpu_device) < 0:
             raise ValueError("execution.gpu_device must be non-negative when set.")
+        if not isinstance(self.seed_gc_store_all_pairs, bool):
+            raise ValueError("execution.seed_gc_store_all_pairs must be true or false.")
+        if not isinstance(self.progress, bool):
+            raise ValueError("execution.progress must be true or false.")
         validate_backend_settings(self.gc_backend, self.consensus_backend)

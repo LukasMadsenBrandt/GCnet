@@ -1,0 +1,52 @@
+# Benito Human raw-count preprocessing plus stage-1 all-pairs GC for B200/HPC nodes.
+# Install requirements-cuda-cupy.txt and configure CUDA as described in
+# docs/GPU_ACCELERATION.md before starting stage 01.
+run_name: zeb2_benito_human_raw_all_pairs_gpu_b200
+
+dataset:
+  name: benito_human
+  expression_file: Data/Benito/Benito_Human
+
+gene_of_interest: ZEB2
+seed_gene_file: Data/Benito/unique_genes.txt
+
+preprocessing:
+  normalize: none
+  transform: none
+  aggregation: robust
+  export_all_replicates: true
+  export_all_summarized: true
+  export_subset_replicates: true
+  export_subset_summarized: true
+
+# Used only by later scientific stages; stage 01 stores all attempted pairs.
+network:
+  p_value_threshold: 0.01
+  write_svg: false
+  svg_renderer: networkx
+  svg_layout: dot
+
+consensus:
+  initial_runs: 5000
+  run_increment_fraction: 0.20
+  stability_quantile: 0.90
+  stability_tolerance: 0.05
+  top_overlap_threshold_percent: 95.0
+
+probe_selection:
+  mode: top_percent
+  top_percent: 5.0
+  min_frequency: null
+
+execution:
+  max_workers: null
+  chunk_size: 250000
+  resume: true
+  gc_backend: gpu_cuda
+  consensus_backend: cpu_louvain
+  gpu_device: 0
+  # Internally uses p=1.00 for stage 01 storage only.
+  seed_gc_store_all_pairs: true
+  progress: true
+
+artifacts: {}

@@ -11,6 +11,10 @@ preprocessing:
   normalize: none      # none | deseq | zscore
   transform: none      # none | log1p | sqrt
   aggregation: robust  # robust | mean | median, for replicate-based loaders
+  export_all_replicates: true
+  export_all_summarized: true
+  export_subset_replicates: true
+  export_subset_summarized: true
 
 network:
   p_value_threshold: 0.0015
@@ -37,5 +41,6 @@ execution:
   gc_backend: cpu_statsmodels
   consensus_backend: cpu_louvain
   gpu_device: null
+  seed_gc_store_all_pairs: true  # Stage 01 only; networks still use network.p_value_threshold.
 
 artifacts: {}

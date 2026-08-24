@@ -39,6 +39,7 @@ pipeline run.
 
 | Stage | Purpose | Required Config Inputs | Required Resume Artifacts | Main Outputs |
 | --- | --- | --- | --- | --- |
+| `00_preprocessing` | Validate and optionally export expression views | `dataset.expression_file`, `seed_gene_file`, `preprocessing` | none | Up to four all-gene/subset, replicate/summarized CSVs |
 | `01_seed_gc` | Directed GC among seed genes | `seed_gene_file`, `dataset.expression_file`, `network.p_value_threshold` | none | `seed_gc_csv` |
 | `02_seed_consensus` | Significant seed network + stable GOI Louvain consensus | `gene_of_interest`, `network`, `consensus` | `seed_gc_csv` | `seed_frequency_csv`, seed network files, top-5%-consensus network files |
 | `03_probe_selection` | Select high-frequency GOI-community genes | `probe_selection`, `gene_of_interest` | `seed_frequency_csv` | `probe_genes_file` |
@@ -74,6 +75,7 @@ stage is available in
 
 | Stage | Primary Question | First Files To Inspect | Main Scientific Use |
 | --- | --- | --- | --- |
+| `00_preprocessing` | What expression values and replicates enter the analysis? | `all_genes_summarized.csv`, `all_genes_replicates.csv`, `manifest.json` | Audit the exact summarized matrix passed to GC and inspect replicate-level variation. |
 | `01_seed_gc` | Which directed GC relationships exist inside the curated seed set? | `seed_gc.csv`, `manifest.json` | Verify the seed-pair search space and retain the directed GC evidence used to build the seed network. |
 | `02_seed_consensus` | Which seed-network genes repeatedly cluster with the GOI? | `priority_genes.csv`, `seed_network.svg`, `seed_top_consensus_network.svg`, `consensus_progress.jsonl`, `consensus_history.json` | Choose high-confidence GOI-community genes for probing and inspect their subcommunities. |
 | `03_probe_selection` | Which consensus genes will probe the full dataset? | `probe_genes.txt`, `manifest.json` | Confirm the configured top-percent or frequency-cutoff selection before the broad probe stage. |
@@ -88,6 +90,10 @@ Use these keys under `artifacts:` when resuming from a later stage.
 
 | Artifact Key | Produced By | Needed By | Default Path |
 | --- | --- | --- | --- |
+| `all_genes_replicates_csv` | `00_preprocessing` | Dataset explorer | `results/pipeline/<run>/00_preprocessing/all_genes_replicates.csv` |
+| `all_genes_summarized_csv` | `00_preprocessing` | Dataset explorer | `results/pipeline/<run>/00_preprocessing/all_genes_summarized.csv` |
+| `subset_genes_replicates_csv` | `00_preprocessing` | Audit/export | `results/pipeline/<run>/00_preprocessing/subset_genes_replicates.csv` |
+| `subset_genes_summarized_csv` | `00_preprocessing` | Audit/export | `results/pipeline/<run>/00_preprocessing/subset_genes_summarized.csv` |
 | `seed_gc_csv` | `01_seed_gc` | `02_seed_consensus` | `results/pipeline/<run>/01_seed_gc/seed_gc.csv` |
 | `seed_frequency_csv` | `02_seed_consensus` | `03_probe_selection` | `results/pipeline/<run>/02_seed_consensus/priority_genes.csv` |
 | `probe_genes_file` | `03_probe_selection` | `04_dataset_probe` | `results/pipeline/<run>/03_probe_selection/probe_genes.txt` |

@@ -45,6 +45,7 @@ from gene_analysis.analysis.granger_cuda import perform_gc_cuda
 
 
 STAGES = (
+    "00_preprocessing",
     "01_seed_gc",
     "02_seed_consensus",
     "03_probe_selection",
@@ -53,6 +54,13 @@ STAGES = (
     "06_expanded_gc",
     "07_expanded_consensus",
 )
+
+PREPROCESSING_EXPORT_KEYS = {
+    "all_genes_replicates_csv": "export_all_replicates",
+    "all_genes_summarized_csv": "export_all_summarized",
+    "subset_genes_replicates_csv": "export_subset_replicates",
+    "subset_genes_summarized_csv": "export_subset_summarized",
+}
 
 GENERIC_DATASET_NAMES = {"generic_expression", "preprocessed", "sample_real_gc", "real_gc_sample"}
 MIN_RECOMMENDED_TIMEPOINTS = 5
@@ -265,6 +273,7 @@ def _run_configured_gc(
     rename_at_end: bool,
     backend: str,
     gpu_device: int | None,
+    record_failed_pairs: bool = False,
 ) -> dict[str, Any]:
     """Dispatch a GC job to the configured compute backend."""
     if backend == "gpu_cuda":
@@ -280,6 +289,7 @@ def _run_configured_gc(
             resume=resume,
             rename_at_end=rename_at_end,
             gpu_device=gpu_device,
+            record_failed_pairs=record_failed_pairs,
         )
     return perform_gc(
         expression_df,
@@ -292,6 +302,7 @@ def _run_configured_gc(
         progress=progress,
         resume=resume,
         rename_at_end=rename_at_end,
+        record_failed_pairs=record_failed_pairs,
     )
 
 
@@ -387,6 +398,10 @@ class PipelineConfig:
                 gc_backend=str(execution_raw.get("gc_backend", "cpu_statsmodels")),
                 consensus_backend=str(execution_raw.get("consensus_backend", "cpu_louvain")),
                 gpu_device=execution_raw.get("gpu_device"),
+                seed_gc_store_all_pairs=_bool_option_from_raw(
+                    execution_raw.get("seed_gc_store_all_pairs", False)
+                ),
+                progress=_bool_option_from_raw(execution_raw.get("progress", True)),
             ),
             artifacts={key: Path(value) for key, value in artifacts_raw.items() if value is not None},
         )
@@ -427,7 +442,24 @@ def _preprocessing_from_raw(raw: Optional[dict[str, Any]], *, dataset_name: str)
         normalize=str(raw.get("normalize", "none")),
         transform=str(raw.get("transform", "none")),
         aggregation=str(raw.get("aggregation", "robust")),
+        export_all_replicates=_bool_option_from_raw(raw.get("export_all_replicates", False)),
+        export_all_summarized=_bool_option_from_raw(raw.get("export_all_summarized", False)),
+        export_subset_replicates=_bool_option_from_raw(raw.get("export_subset_replicates", False)),
+        export_subset_summarized=_bool_option_from_raw(raw.get("export_subset_summarized", False)),
     )
+
+
+def _bool_option_from_raw(value: Any) -> bool:
+    """Parse an optional YAML boolean without tying its error to network settings."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "1", "on"}:
+            return True
+        if lowered in {"false", "no", "0", "off"}:
+            return False
+    raise ValueError("preprocessing export options must be true or false.")
 
 
 def _pre_aggregation_normalize(normalize: str) -> str | None:
@@ -462,7 +494,7 @@ def _apply_remaining_preprocessing(
 
 
 class PipelineRunner:
-    """Run or resume the seven-stage guided gene-expansion workflow."""
+    """Run or resume the eight-stage guided gene-expansion workflow."""
 
     def __init__(self, config: PipelineConfig):
         config.validate()
@@ -489,7 +521,13 @@ class PipelineRunner:
             / "figures"
             / "expanded_top_consensus_network.svg",
             "dataset_genes_file": self.run_dir / "00_dataset" / "dataset_genes.txt",
-            "seed_gc_csv": self.run_dir / "01_seed_gc" / "seed_gc.csv",
+            "all_genes_replicates_csv": self.run_dir / "00_preprocessing" / "all_genes_replicates.csv",
+            "all_genes_summarized_csv": self.run_dir / "00_preprocessing" / "all_genes_summarized.csv",
+            "subset_genes_replicates_csv": self.run_dir / "00_preprocessing" / "subset_genes_replicates.csv",
+            "subset_genes_summarized_csv": self.run_dir / "00_preprocessing" / "subset_genes_summarized.csv",
+            "seed_gc_csv": self.run_dir
+            / "01_seed_gc"
+            / ("seed_gc_all_pairs.csv" if self.config.execution.seed_gc_store_all_pairs else "seed_gc.csv"),
             "seed_frequency_csv": self.run_dir / "02_seed_consensus" / "priority_genes.csv",
             "seed_consensus_history_json": self.run_dir / "02_seed_consensus" / "consensus_history.json",
             "seed_consensus_progress_jsonl": self.run_dir / "02_seed_consensus" / "consensus_progress.jsonl",
@@ -607,6 +645,12 @@ class PipelineRunner:
     def reported_artifacts(self) -> dict[str, Path]:
         """Return artifact paths that are expected for the current config."""
         artifacts = {**self.default_artifacts(), **self.artifacts}
+        artifacts = {
+            key: value
+            for key, value in artifacts.items()
+            if key not in PREPROCESSING_EXPORT_KEYS
+            or getattr(self.config.preprocessing, PREPROCESSING_EXPORT_KEYS[key])
+        }
         if self.config.network.write_svg:
             return artifacts
         return {key: value for key, value in artifacts.items() if key not in NETWORK_SVG_ARTIFACT_KEYS}
@@ -663,6 +707,7 @@ class PipelineRunner:
                 "genes_total",
                 "edges_total",
                 "gene_count",
+                "all_genes_summarized_rows",
                 "expanded_gene_count",
                 "expanded_new_gene_count",
                 "expanded_new_gene_percent",
@@ -741,6 +786,7 @@ class PipelineRunner:
             f"- P-value threshold: `{self.config.network.p_value_threshold}`",
             f"- Probe selection: `{self.config.probe_selection.mode}`",
             f"- GC backend: `{self.config.execution.gc_backend}`",
+            f"- Store all attempted seed GC pairs: `{self.config.execution.seed_gc_store_all_pairs}`",
             f"- Consensus backend: `{self.config.execution.consensus_backend}`",
             f"- Max workers: `{self.config.execution.max_workers}`",
             f"- Network SVG previews: `{self.config.network.write_svg}`",
@@ -756,7 +802,10 @@ class PipelineRunner:
             lines.append(
                 "| {stage} | {genes} | {new_genes} | {seed_overlap} | {edges} | {pairs} | {communities} | {goi_comm} | {runs} |".format(
                     stage=row.get("stage", ""),
-                    genes=row.get("expanded_gene_count", row.get("genes_total", row.get("gene_count", ""))),
+                    genes=row.get(
+                        "expanded_gene_count",
+                        row.get("genes_total", row.get("gene_count", row.get("all_genes_summarized_rows", ""))),
+                    ),
                     new_genes=row.get("expanded_new_gene_count", ""),
                     seed_overlap=row.get("expanded_seed_overlap_count", ""),
                     edges=row.get("edges_total", ""),
@@ -768,6 +817,11 @@ class PipelineRunner:
             )
         lines.extend(["", "## Key Outputs", ""])
         output_keys = (
+            "all_genes_replicates_csv",
+            "all_genes_summarized_csv",
+            "subset_genes_replicates_csv",
+            "subset_genes_summarized_csv",
+            "seed_gc_csv",
             "seed_network_graphml",
             "seed_network_figure_svg",
             "seed_top_consensus_network_graphml",
@@ -808,10 +862,13 @@ class PipelineRunner:
         self.artifacts["run_summary_md"] = summary_path
         return summary_path
 
-    def load_expression_dataframe(self, *, restrict_to_configured_genes: bool = True):
-        """Load and preprocess the configured expression matrix for heavy GC stages."""
+    def load_expression_dataframes(self):
+        """Return the exact summarized GC matrix and its pre-aggregation replicate matrix."""
+        cached = getattr(self, "_expression_dataframes", None)
+        if cached is not None:
+            return cached
         dataset_name = self.config.dataset.name.lower()
-        if dataset_name in GENERIC_DATASET_NAMES:
+        if dataset_name in GENERIC_DATASET_NAMES | {"fixture"}:
             import pandas as pd
 
             expression_file = resolve_existing_path(self.config.dataset.expression_file)
@@ -824,17 +881,16 @@ class PipelineRunner:
                     "Generic expression file must contain at least "
                     f"{MIN_RECOMMENDED_TIMEPOINTS} ordered timepoint/condition columns for GC robustness."
                 )
-            df = apply_expression_preprocessing(
+            replicates = apply_expression_preprocessing(
                 df,
                 normalize=self.config.preprocessing.normalize,
                 transform=self.config.preprocessing.transform,
             )
-            df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
-            return self.restrict_expression_dataframe(df) if restrict_to_configured_genes else df
-        if dataset_name in {"benito_human", "benito_gorilla"}:
+            summarized = aggregate_duplicate_genes(replicates, method=self.config.preprocessing.aggregation)
+        elif dataset_name in {"benito_human", "benito_gorilla"}:
             from gene_analysis.datasets.benito import preprocess_pipeline_benito
 
-            df_mean_per_day, _, _ = preprocess_pipeline_benito(
+            df_mean_per_day, replicates, _ = preprocess_pipeline_benito(
                 datafile=resolve_existing_path(self.config.dataset.expression_file),
                 mappingfile=resolve_existing_path("Data/Benito/gene_id_to_gene_name.txt"),
                 map_speciment_to_gene_file=resolve_existing_path("Data/Benito/map_speciment_to_gene.csv"),
@@ -842,24 +898,33 @@ class PipelineRunner:
                 transformed=_pre_aggregation_transform(self.config.preprocessing.transform),
                 aggregation=self.config.preprocessing.aggregation,
             )
-            df = _apply_remaining_preprocessing(df_mean_per_day, self.config.preprocessing)
-            df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
-            return self.restrict_expression_dataframe(df) if restrict_to_configured_genes else df
-        if dataset_name != "kutsche":
+            summarized = _apply_remaining_preprocessing(df_mean_per_day, self.config.preprocessing)
+            summarized = aggregate_duplicate_genes(summarized, method=self.config.preprocessing.aggregation)
+        elif dataset_name == "kutsche":
+            df = load_and_preprocess_data(resolve_existing_path(self.config.dataset.expression_file))
+            df_filtered, replicates, _ = preprocess_pipeline(
+                df,
+                normalize=_pre_aggregation_normalize(self.config.preprocessing.normalize),
+                transformed=_pre_aggregation_transform(self.config.preprocessing.transform),
+                aggregation=self.config.preprocessing.aggregation,
+            )
+            summarized = _apply_remaining_preprocessing(df_filtered, self.config.preprocessing)
+            summarized = aggregate_duplicate_genes(summarized, method=self.config.preprocessing.aggregation)
+        else:
             raise NotImplementedError(
                 "The canonical runner currently supports dataset.name='kutsche', "
                 "'benito_human', 'benito_gorilla', and 'generic_expression' for heavy GC stages."
             )
-        df = load_and_preprocess_data(resolve_existing_path(self.config.dataset.expression_file))
-        df_filtered, _, _ = preprocess_pipeline(
-            df,
-            normalize=_pre_aggregation_normalize(self.config.preprocessing.normalize),
-            transformed=_pre_aggregation_transform(self.config.preprocessing.transform),
-            aggregation=self.config.preprocessing.aggregation,
-        )
-        df = _apply_remaining_preprocessing(df_filtered, self.config.preprocessing)
-        df = aggregate_duplicate_genes(df, method=self.config.preprocessing.aggregation)
-        return self.restrict_expression_dataframe(df) if restrict_to_configured_genes else df
+
+        replicates = replicates.loc[replicates.index.notna()].copy()
+        summarized = summarized.loc[summarized.index.notna()].copy()
+        self._expression_dataframes = (summarized, replicates)
+        return self._expression_dataframes
+
+    def load_expression_dataframe(self, *, restrict_to_configured_genes: bool = True):
+        """Load the summarized expression matrix used by heavy GC stages."""
+        summarized, _replicates = self.load_expression_dataframes()
+        return self.restrict_expression_dataframe(summarized) if restrict_to_configured_genes else summarized
 
     def restrict_expression_dataframe(self, df):
         """Restrict expression data to configured full-dataset and seed genes when present."""
@@ -908,7 +973,7 @@ class PipelineRunner:
                 writer.writerow([source, target, 1, "0.001"])
         return {"output_file": str(output), "total_pairs": str(len(pairs))}
 
-    def run(self, *, start_at: str = "01_seed_gc", stop_after: Optional[str] = None) -> dict[str, Path]:
+    def run(self, *, start_at: str = "00_preprocessing", stop_after: Optional[str] = None) -> dict[str, Path]:
         """Run a contiguous section of the pipeline and return known artifacts."""
         start = normalize_stage(start_at)
         stop = normalize_stage(stop_after) if stop_after else STAGES[-1]
@@ -940,6 +1005,75 @@ class PipelineRunner:
             json.dump(run_manifest, fh, indent=2)
         return self.reported_artifacts()
 
+    def run_00_preprocessing(self) -> None:
+        """Export pre-aggregation data and the exact summarized GC-input matrix."""
+        stage = "00_preprocessing"
+        started = datetime.now().isoformat(timespec="seconds")
+        summarized, replicates = self.load_expression_dataframes()
+        seed_genes = load_seed_genes(self.config.seed_gene_file)
+        seed_gene_set = set(seed_genes)
+        summarized_subset_genes = [gene for gene in seed_genes if gene in summarized.index]
+        summarized_subset = summarized.loc[summarized_subset_genes]
+        replicates_subset = replicates.loc[replicates.index.map(str).isin(seed_gene_set)]
+
+        validate_expression_dataframe(
+            summarized,
+            gene_of_interest=self.config.gene_of_interest,
+            seed_genes=seed_genes,
+            transform=self.config.preprocessing.transform,
+            min_timepoints=MIN_RECOMMENDED_TIMEPOINTS,
+            min_present_genes=1,
+        )
+
+        frames = {
+            "all_genes_replicates_csv": replicates,
+            "all_genes_summarized_csv": summarized,
+            "subset_genes_replicates_csv": replicates_subset,
+            "subset_genes_summarized_csv": summarized_subset,
+        }
+        outputs: dict[str, Path] = {}
+        defaults = self.default_artifacts()
+        for artifact_key, frame in frames.items():
+            option = PREPROCESSING_EXPORT_KEYS[artifact_key]
+            if not getattr(self.config.preprocessing, option):
+                continue
+            path = defaults[artifact_key]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            frame.rename_axis("Gene").to_csv(path)
+            self.artifacts[artifact_key] = path
+            outputs[artifact_key] = path
+
+        missing_subset_genes = [gene for gene in seed_genes if gene not in summarized.index]
+        self.write_manifest(
+            stage,
+            "completed",
+            inputs={
+                "expression_file": self.config.dataset.expression_file,
+                "seed_gene_file": self.config.seed_gene_file,
+            },
+            outputs=outputs,
+            parameters={
+                "normalize": self.config.preprocessing.normalize,
+                "transform": self.config.preprocessing.transform,
+                "aggregation": self.config.preprocessing.aggregation,
+                **{
+                    option: getattr(self.config.preprocessing, option)
+                    for option in PREPROCESSING_EXPORT_KEYS.values()
+                },
+            },
+            metrics={
+                "all_genes_replicate_rows": len(replicates.index),
+                "all_genes_replicate_columns": len(replicates.columns),
+                "all_genes_summarized_rows": len(summarized.index),
+                "all_genes_summarized_columns": len(summarized.columns),
+                "subset_genes_requested": len(seed_genes),
+                "subset_genes_present": len(summarized_subset_genes),
+                "subset_genes_missing": len(missing_subset_genes),
+                "missing_subset_gene_names": missing_subset_genes,
+            },
+            started=started,
+        )
+
     def run_01_seed_gc(self) -> None:
         """Run directed GC among curated seed genes."""
         stage = "01_seed_gc"
@@ -968,15 +1102,16 @@ class PipelineRunner:
                 expression_df,
                 genes_file=str(resolve_existing_path(self.config.seed_gene_file)),
                 output_file=str(output),
-                p_threshold=self.config.network.p_value_threshold,
+                p_threshold=(1.0 if self.config.execution.seed_gc_store_all_pairs else self.config.network.p_value_threshold),
                 chunk_size=self.config.execution.chunk_size,
                 list_to_kutsche=False,
                 max_workers=self.config.execution.max_workers,
-                progress=True,
+                progress=self.config.execution.progress,
                 resume=self.config.execution.resume,
                 rename_at_end=False,
                 backend=self.config.execution.gc_backend,
                 gpu_device=self.config.execution.gpu_device,
+                record_failed_pairs=self.config.execution.seed_gc_store_all_pairs,
             )
         validate_gc_csv(output)
         self.artifacts["seed_gc_csv"] = Path(result["output_file"])
@@ -986,7 +1121,11 @@ class PipelineRunner:
             inputs={"seed_gene_file": self.config.seed_gene_file, "expression_file": self.config.dataset.expression_file},
             outputs={"seed_gc_csv": output},
             parameters={
-                "p_value_threshold": self.config.network.p_value_threshold,
+                "p_value_threshold": (
+                    1.0 if self.config.execution.seed_gc_store_all_pairs else self.config.network.p_value_threshold
+                ),
+                "network_p_value_threshold": self.config.network.p_value_threshold,
+                "store_all_attempted_pairs": self.config.execution.seed_gc_store_all_pairs,
                 "chunk_size": self.config.execution.chunk_size,
                 "max_workers": self.config.execution.max_workers,
                 "resume": self.config.execution.resume,
@@ -1003,6 +1142,7 @@ class PipelineRunner:
                 "seed_gene_count": _count_text_lines(resolve_existing_path(self.config.seed_gene_file)),
                 "gc_pairs_total": _gc_total_pairs(result, output),
                 "gc_rows_written": _count_csv_rows(output),
+                "gc_failed_pairs": result.get("failed_pairs", 0),
                 "gc_elapsed_seconds": result.get("elapsed_seconds"),
             },
             started=started,
@@ -1178,7 +1318,7 @@ class PipelineRunner:
                 chunk_size=self.config.execution.chunk_size,
                 list_to_kutsche=True,
                 max_workers=self.config.execution.max_workers,
-                progress=True,
+                progress=self.config.execution.progress,
                 resume=self.config.execution.resume,
                 rename_at_end=False,
                 backend=self.config.execution.gc_backend,
@@ -1328,7 +1468,7 @@ class PipelineRunner:
                 chunk_size=self.config.execution.chunk_size,
                 list_to_kutsche=False,
                 max_workers=self.config.execution.max_workers,
-                progress=True,
+                progress=self.config.execution.progress,
                 resume=self.config.execution.resume,
                 rename_at_end=False,
                 backend=self.config.execution.gc_backend,
@@ -1487,6 +1627,10 @@ def _config_to_dict(config: PipelineConfig) -> dict[str, Any]:
             "normalize": config.preprocessing.normalize,
             "transform": config.preprocessing.transform,
             "aggregation": config.preprocessing.aggregation,
+            "export_all_replicates": config.preprocessing.export_all_replicates,
+            "export_all_summarized": config.preprocessing.export_all_summarized,
+            "export_subset_replicates": config.preprocessing.export_subset_replicates,
+            "export_subset_summarized": config.preprocessing.export_subset_summarized,
         },
         "network": {
             "p_value_threshold": config.network.p_value_threshold,
@@ -1513,11 +1657,13 @@ def _config_to_dict(config: PipelineConfig) -> dict[str, Any]:
             "gc_backend": config.execution.gc_backend,
             "consensus_backend": config.execution.consensus_backend,
             "gpu_device": config.execution.gpu_device,
+            "seed_gc_store_all_pairs": config.execution.seed_gc_store_all_pairs,
+            "progress": config.execution.progress,
         },
         "artifacts": {key: str(value) for key, value in config.artifacts.items()},
     }
 
 
-def run_pipeline(config: PipelineConfig, *, start_at: str = "01_seed_gc", stop_after: Optional[str] = None) -> dict[str, Path]:
+def run_pipeline(config: PipelineConfig, *, start_at: str = "00_preprocessing", stop_after: Optional[str] = None) -> dict[str, Path]:
     """Convenience function for CLI wrappers and tests."""
     return PipelineRunner(config).run(start_at=start_at, stop_after=stop_after)

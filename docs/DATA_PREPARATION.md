@@ -83,6 +83,10 @@ preprocessing:
   normalize: none      # none | deseq | zscore
   transform: log1p     # none | log1p | sqrt
   aggregation: robust  # robust | mean | median
+  export_all_replicates: true
+  export_all_summarized: true
+  export_subset_replicates: true
+  export_subset_summarized: true
 ```
 
 `normalize` is applied before transformation. For Kutsche and Benito raw-count
@@ -96,6 +100,18 @@ often contain zeros. Use `log1p` for log-style scaling.
 
 `aggregation` controls how Kutsche and Benito replicate columns are reduced to
 one value per day. It can be `robust`, `mean`, or `median`.
+
+The four export switches are independent. `all` includes every gene remaining
+after dataset-specific filtering. `subset` includes every available gene from
+`seed_gene_file` (for example `unique_genes.txt`), not merely the single
+`gene_of_interest`. `replicates` is the pre-aggregation matrix; `summarized` is
+the post-aggregation, duplicate-symbol-collapsed matrix passed to Granger
+causality. Generic preprocessed matrices contain no separate replicate metadata,
+so their replicate export mirrors their provided timepoint matrix.
+
+The files and an audit manifest are written under
+`results/pipeline/<run>/00_preprocessing/`. All switches default to `false` to
+avoid unexpectedly duplicating very large production matrices.
 
 ## Kutsche Dataset
 

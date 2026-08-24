@@ -167,9 +167,9 @@ def _worker_wrapper(args):
 # CSV append for significant rows only
 # ============================================================
 
-def _append_significant_rows(path: str, rows: List[Tuple[str, str, str, str]]):
+def _append_significant_rows(path: str, rows, *, include_error: bool = False):
     """
-    Append rows with schema: gene1,gene2,lag,p-value (only significant entries should be passed here).
+    Append canonical GC rows, optionally with an audit error field.
     """
     must_header = (not os.path.exists(path) or os.path.getsize(path) == 0)
     # Ensure directory exists (if path includes dirs)
@@ -180,7 +180,10 @@ def _append_significant_rows(path: str, rows: List[Tuple[str, str, str, str]]):
     with open(path, mode="a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if must_header:
-            w.writerow(["gene1", "gene2", "lag", "p-value"])
+            header = ["gene1", "gene2", "lag", "p-value"]
+            if include_error:
+                header.append("error")
+            w.writerow(header)
         w.writerows(rows)
 
 # ============================================================
@@ -199,7 +202,8 @@ def perform_gc(
     pool_chunksize: int = 64,
     progress: bool = True,
     resume: bool = True,
-    rename_at_end: bool = True
+    rename_at_end: bool = True,
+    record_failed_pairs: bool = False,
 ):
     """
     Chunked, streaming Granger causality over ordered gene pairs.
@@ -214,7 +218,8 @@ def perform_gc(
 
       Here the bitset/checkpoint is sized exactly to that subset of pairs for precise resume.
 
-    Writes only significant rows (p <= p_threshold) to CSV with schema: gene1,gene2,lag,p-value.
+    Writes rows with p <= p_threshold. When ``record_failed_pairs`` is true,
+    failed attempts are retained with p-value ``NaN`` plus an error column.
     """
     import pandas as pd
 
@@ -311,6 +316,7 @@ def perform_gc(
     max_workers = max_workers or mp.cpu_count()
     processed_pairs = 0
     significant_count = 0
+    failed_count = 0
 
     # Progress infra
     with mp.Manager() as manager:
@@ -338,7 +344,7 @@ def perform_gc(
                     # chunk elements: (g1, g2, i, j, k)
                     tasks = (((g1, g2), progress_queue) for (g1, g2, _i, _j, _k) in chunk)
 
-                rows_for_csv: List[Tuple[str, str, str, str]] = []
+                rows_for_csv: list[list[str]] = []
 
                 for result in pool.imap_unordered(_worker_wrapper, tasks, chunksize=pool_chunksize):
                     if not result:
@@ -358,24 +364,38 @@ def perform_gc(
 
                     # Skip on error/empty
                     if not payload or (isinstance(payload, dict) and "error" in payload):
+                        if record_failed_pairs:
+                            error = payload.get("error", "empty result") if isinstance(payload, dict) else "empty result"
+                            rows_for_csv.append([gene1, gene2, "1", "NaN", str(error)])
+                            failed_count += 1
                         continue
 
                     # Extract only significant rows (p <= threshold)
+                    wrote_result = False
                     try:
                         for lag, res in payload.items():
                             ssr_ftest = res[0].get('ssr_ftest') if isinstance(res, (list, tuple)) else res.get('ssr_ftest')
                             if ssr_ftest and len(ssr_ftest) > 1:
                                 pval = float(ssr_ftest[1])
                                 if pval <= p_threshold:
-                                    rows_for_csv.append([gene1, gene2, str(lag), f"{pval:.6f}"])
-                    except Exception:
-                        # Ignore malformed result entries
-                        pass
+                                    row = [gene1, gene2, str(lag), format(pval, ".17g")]
+                                    if record_failed_pairs:
+                                        row.append("")
+                                    rows_for_csv.append(row)
+                                    wrote_result = True
+                    except Exception as exc:
+                        if record_failed_pairs:
+                            rows_for_csv.append([gene1, gene2, "1", "NaN", str(exc)])
+                            failed_count += 1
+                            wrote_result = True
+                    if record_failed_pairs and not wrote_result:
+                        rows_for_csv.append([gene1, gene2, "1", "NaN", "no usable SSR F-test result"])
+                        failed_count += 1
 
                 # Persist significant rows for this chunk
                 if rows_for_csv:
-                    _append_significant_rows(output_file, rows_for_csv)
-                    significant_count += len(rows_for_csv)
+                    _append_significant_rows(output_file, rows_for_csv, include_error=record_failed_pairs)
+                    significant_count += sum(1 for row in rows_for_csv if str(row[3]).lower() != "nan")
 
                 # Persist checkpoint at chunk boundary
                 _save_bitset(checkpoint_path, bitset)
@@ -396,10 +416,10 @@ def perform_gc(
         try:
             os.replace(output_file, final_path)
         except FileNotFoundError:
-            _append_significant_rows(output_file, [])
+            _append_significant_rows(output_file, [], include_error=record_failed_pairs)
             os.replace(output_file, final_path)
     elif not os.path.exists(output_file):
-        _append_significant_rows(output_file, [])
+        _append_significant_rows(output_file, [], include_error=record_failed_pairs)
 
     print(f"Total pairs: {total_pairs_all}")
     print(f"Processed this run: {processed_pairs}")
@@ -411,6 +431,7 @@ def perform_gc(
         "total_pairs_all": total_pairs_all,
         "processed_this_run": processed_pairs,
         "significant_edges": significant_count,
+        "failed_pairs": failed_count,
         "p_threshold": p_threshold,
         "output_file": final_path,
         "checkpoint_path": checkpoint_path,

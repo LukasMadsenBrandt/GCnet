@@ -35,6 +35,7 @@ def perform_gc_cuda(
     resume: bool = True,
     rename_at_end: bool = True,
     gpu_device: int | None = None,
+    record_failed_pairs: bool = False,
 ):
     """
     Run lag-1 Granger causality using CuPy for the regression calculations.
@@ -93,6 +94,7 @@ def perform_gc_cuda(
     bitset = _load_or_init_bitset(checkpoint_path, total_pairs_all)
     processed_pairs = 0
     significant_count = 0
+    failed_count = 0
 
     if list_to_kutsche:
         genes_to_load = sorted({gene for pair in pairs for gene in pair})
@@ -113,10 +115,16 @@ def perform_gc_cuda(
         for (gene1, gene2, idx), p_value in zip(chunk, p_values):
             _bit_set(bitset, idx)
             if p_value is not None and p_value <= p_threshold:
-                rows.append([gene1, gene2, "1", f"{p_value:.6f}"])
+                row = [gene1, gene2, "1", format(p_value, ".17g")]
+                if record_failed_pairs:
+                    row.append("")
+                rows.append(row)
+            elif p_value is None and record_failed_pairs:
+                rows.append([gene1, gene2, "1", "NaN", "no usable lag-1 F-test result"])
+                failed_count += 1
         if rows:
-            _append_significant_rows(output_file, rows)
-            significant_count += len(rows)
+            _append_significant_rows(output_file, rows, include_error=record_failed_pairs)
+            significant_count += sum(1 for row in rows if str(row[3]).lower() != "nan")
         _save_bitset(checkpoint_path, bitset)
         processed_pairs += len(chunk)
         if progress:
@@ -130,10 +138,10 @@ def perform_gc_cuda(
         try:
             os.replace(output_file, final_path)
         except FileNotFoundError:
-            _append_significant_rows(output_file, [])
+            _append_significant_rows(output_file, [], include_error=record_failed_pairs)
             os.replace(output_file, final_path)
     elif not os.path.exists(output_file):
-        _append_significant_rows(output_file, [])
+        _append_significant_rows(output_file, [], include_error=record_failed_pairs)
 
     print(f"Total pairs: {total_pairs_all}")
     print(f"Processed this run: {processed_pairs}")
@@ -147,6 +155,7 @@ def perform_gc_cuda(
         "total_pairs_all": total_pairs_all,
         "processed_this_run": processed_pairs,
         "significant_edges": significant_count,
+        "failed_pairs": failed_count,
         "p_threshold": p_threshold,
         "output_file": final_path,
         "checkpoint_path": checkpoint_path,

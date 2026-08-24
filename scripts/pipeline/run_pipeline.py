@@ -14,7 +14,7 @@ def main() -> None:
     """Parse CLI arguments and run or resume the configured pipeline."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="Pipeline YAML config.")
-    parser.add_argument("--start-at", default="01_seed_gc", help="Stage number/name to start at.")
+    parser.add_argument("--start-at", default="00_preprocessing", help="Stage number/name to start at.")
     parser.add_argument("--stop-after", default=None, help="Optional stage number/name to stop after.")
     args = parser.parse_args()
 

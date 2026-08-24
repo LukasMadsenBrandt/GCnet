@@ -51,6 +51,43 @@ def test_perform_gc_full_mode_writes_header_and_checkpoint_for_constant_data(tmp
         assert list(csv.reader(fh)) == [["gene1", "gene2", "lag", "p-value"]]
 
 
+def test_perform_gc_all_pairs_audit_records_failed_pairs(tmp_path):
+    genes_file = tmp_path / "genes.txt"
+    output_file = tmp_path / "gc_all_pairs.csv"
+    genes_file.write_text("A\nB\nC\n", encoding="utf-8")
+    expression = pd.DataFrame(
+        {
+            "T1": [1, 2, 3],
+            "T2": [1, 2, 3],
+            "T3": [1, 2, 3],
+            "T4": [1, 2, 3],
+            "T5": [1, 2, 3],
+        },
+        index=["A", "B", "C"],
+    )
+
+    result = perform_gc(
+        expression,
+        genes_file=str(genes_file),
+        output_file=str(output_file),
+        p_threshold=1.0,
+        chunk_size=2,
+        max_workers=1,
+        progress=False,
+        resume=False,
+        rename_at_end=False,
+        record_failed_pairs=True,
+    )
+
+    with output_file.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert len(rows) == 6
+    assert set(rows[0]) == {"gene1", "gene2", "lag", "p-value", "error"}
+    assert all(row["error"] for row in rows)
+    assert {row["p-value"] for row in rows} == {"NaN"}
+    assert result["failed_pairs"] == 6
+
+
 def test_perform_gc_resume_skips_seen_pairs(tmp_path):
     genes_file = tmp_path / "genes.txt"
     output_file = tmp_path / "gc.csv"

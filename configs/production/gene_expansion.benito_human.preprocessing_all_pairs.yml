@@ -1,0 +1,49 @@
+run_name: mecp2_benito_human_raw_preprocessing_all_pairs
+
+dataset:
+  name: benito_human
+  expression_file: Data/Benito/Benito_Human
+
+gene_of_interest: MECP2
+seed_gene_file: Data/Benito/unique_genes.txt
+
+preprocessing:
+  normalize: none
+  transform: none
+  aggregation: robust
+  export_all_replicates: true
+  export_all_summarized: true
+  export_subset_replicates: true
+  export_subset_summarized: true
+
+# This remains the scientific threshold if this run is ever resumed at stage 02.
+network:
+  p_value_threshold: 0.01
+  write_svg: false
+  svg_renderer: networkx
+  svg_layout: dot
+
+consensus:
+  initial_runs: 5000
+  run_increment_fraction: 0.20
+  stability_quantile: 0.90
+  stability_tolerance: 0.05
+  top_overlap_threshold_percent: 95.0
+
+probe_selection:
+  mode: top_percent
+  top_percent: 5.0
+  min_frequency: null
+
+execution:
+  max_workers: null
+  chunk_size: 100000
+  resume: true
+  gc_backend: cpu_statsmodels
+  consensus_backend: cpu_louvain
+  gpu_device: null
+  # Stage 01 stores every attempted pair at p <= 1.00, including failed tests as NaN rows.
+  seed_gc_store_all_pairs: true
+  progress: false
+
+artifacts: {}

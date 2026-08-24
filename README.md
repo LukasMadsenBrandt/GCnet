@@ -100,6 +100,7 @@ pre-commit install
 
 | Stage | Main outputs |
 | --- | --- |
+| Preprocessing | Optional replicate and summarized CSVs for all genes and the configured seed-gene subset |
 | Seed GC | Directed GC CSV for seed genes |
 | Seed consensus | Seed network files, top-5%-consensus subnetwork, SVG previews, GOI coassociation CSV, consensus history |
 | Probe selection | Probe gene list chosen from seed coassociation frequencies |
@@ -123,6 +124,10 @@ Graphviz-style figures, or render one/all Graphviz layouts after a run with
 `scripts/pipeline/render_network_figures.py`.
 Consensus stages also write a top-5%-consensus subnetwork so the strongest GOI
 coassociation genes can be inspected with their internal subcommunities.
+Use `execution.seed_gc_store_all_pairs: true` to retain every attempted stage-1
+test while keeping `network.p_value_threshold` unchanged for all downstream
+network and consensus analysis. Launch the responsive explorer with
+`python3 scripts/pipeline/explore_dataset.py --run-dir results/pipeline/<run>`.
 For a concrete stage-by-stage example of the folder layout and what to inspect,
 see [Example pipeline run layout](examples/PIPELINE_RUN_LAYOUT.md).
 
@@ -134,6 +139,7 @@ see [Example pipeline run layout](examples/PIPELINE_RUN_LAYOUT.md).
 | Exact commands and resume examples | [Workflows](docs/WORKFLOWS.md) |
 | Manuscript figures and supplementary files | [Publication material](Publication_Material/README.md) |
 | Preparing new datasets | [Data preparation](docs/DATA_PREPARATION.md) |
+| Exploring expression and p-value quantiles | [Dataset explorer](docs/DATASET_EXPLORER.md) |
 | Setting up GPU-accelerated GC | [GPU acceleration](docs/GPU_ACCELERATION.md) |
 | Stage inputs, outputs, metrics, networks | [Pipeline artifacts](docs/PIPELINE_ARTIFACTS.md) |
 | What belongs in Git vs local data/results | [Data and results](docs/DATA_AND_RESULTS.md) |

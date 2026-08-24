@@ -565,6 +565,7 @@ def test_sample_fixture_pipeline_runs_all_stages(tmp_path, monkeypatch):
     artifacts = PipelineRunner(cfg).run()
 
     expected_stage_dirs = [
+        "00_preprocessing",
         "01_seed_gc",
         "02_seed_consensus",
         "03_probe_selection",

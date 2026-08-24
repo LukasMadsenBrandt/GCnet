@@ -11,6 +11,10 @@ preprocessing:
   normalize: none      # none | deseq | zscore
   transform: log1p     # none | log1p | sqrt
   aggregation: robust  # ignored by generic_expression matrices
+  export_all_replicates: true       # Same timepoint matrix when replicas are not supplied.
+  export_all_summarized: true
+  export_subset_replicates: true
+  export_subset_summarized: true
 
 network:
   p_value_threshold: 0.0015
@@ -37,5 +41,6 @@ execution:
   gc_backend: cpu_statsmodels
   consensus_backend: cpu_louvain
   gpu_device: null
+  seed_gc_store_all_pairs: true
 
 artifacts: {}
