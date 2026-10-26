@@ -147,13 +147,17 @@ class Family:
         directory.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(directory / "tests.sqlite")
         self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=FULL")
+        # Connection-local cache budget (KiB), allocated as needed. The tiny
+        # SQLite default cache thrashes during scattered incoming-pair inserts.
+        self.db.execute("PRAGMA cache_size=-262144")
+        self.db.execute("PRAGMA temp_store=MEMORY")
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tests (
                 id INTEGER PRIMARY KEY, source INTEGER NOT NULL, target INTEGER NOT NULL,
                 coefficient REAL, standard_error REAL, statistic REAL, p REAL,
                 UNIQUE(source, target));
-            CREATE INDEX IF NOT EXISTS tests_target ON tests(target);
             CREATE TABLE IF NOT EXISTS layers (name TEXT PRIMARY KEY, plan TEXT NOT NULL,
                 result TEXT);
         """)
@@ -163,6 +167,14 @@ class Family:
             raise ValueError("Resume refused: input data or analysis settings changed. Use a new run_name.")
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO metadata VALUES ('fingerprint', ?)", (fingerprint,))
+            # Older checkpoints have a reverse index that is expensive to
+            # maintain for predictor-ordered genome probes. Drop only that
+            # derived index, atomically, AFTER validating the fingerprint.
+            # All test rows, identities, unique constraints and plans survive.
+            self.db.execute("DROP INDEX IF EXISTS tests_target")
+        self.db.execute("""CREATE TEMP TABLE pending_pairs (
+            source INTEGER NOT NULL, target INTEGER NOT NULL,
+            PRIMARY KEY(source, target)) WITHOUT ROWID""")
 
     def plan(self, name, sources, universe, direction):
         plan = {"sources": sources, "universe": universe, "direction": direction}
@@ -186,8 +198,11 @@ class Family:
                         if source != target:
                             yield source, target
             if direction in {"both", "incoming"}:
-                for target in sources:
-                    for source in universe:
+                # Group incoming tests by predictor as well. This touches a
+                # small contiguous range of the unique pair index per batch,
+                # instead of scattering writes across every predictor's pages.
+                for source in universe:
+                    for target in sources:
                         if source != target and not (
                             direction == "both" and source in source_set and target in universe_set
                         ):
@@ -203,14 +218,26 @@ class Family:
     def pending(self, block):
         if not block:
             return []
-        # Batches can span multiple predictor rows. Use whichever indexed
-        # orientation needs fewer lookups, never one query per pair.
+        # Source-ordered batches can use the existing UNIQUE(source,target)
+        # index directly. Incoming batches use a small in-memory table and a
+        # correlated indexed pair lookup, rather than a target-only index or
+        # a full scan of every existing test for a target.
         sources, targets = {pair[0] for pair in block}, {pair[1] for pair in block}
-        column, keys = ("source", sources) if len(sources) <= len(targets) else ("target", targets)
-        wanted = set(block)
-        existing = {pair for key in keys
-                    for pair in self.db.execute(f"SELECT source,target FROM tests WHERE {column}=?", (key,))
-                    if pair in wanted}
+        if len(sources) <= len(targets):
+            wanted = set(block)
+            existing = {pair for source in sources
+                        for pair in self.db.execute("SELECT source,target FROM tests WHERE source=?", (source,))
+                        if pair in wanted}
+        else:
+            with self.db:
+                self.db.execute("DELETE FROM pending_pairs")
+                self.db.executemany("INSERT OR IGNORE INTO pending_pairs VALUES (?,?)", block)
+                existing = set(self.db.execute("""
+                    SELECT wanted.source, wanted.target FROM pending_pairs AS wanted
+                    WHERE EXISTS (
+                        SELECT 1 FROM tests
+                        WHERE tests.source=wanted.source AND tests.target=wanted.target)
+                """))
         return [pair for pair in block if pair not in existing]
 
     def save(self, pairs, statistics):

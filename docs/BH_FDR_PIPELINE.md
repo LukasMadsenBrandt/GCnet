@@ -107,6 +107,41 @@ batches; it pauses the run rather than silently completing a partial BH family.
 Increase that budget or remove it to continue. Existing runs with
 `execution.resume: false` are protected from overwrite.
 
+### Checkpoint write performance
+
+The checkpoint keeps the unique `(source, target)` index that prevents duplicate
+tests. It no longer maintains a second target-only index: when results arrive
+in predictor order, that reverse index spreads updates over increasing numbers
+of pages and can make saving progressively slower. Both outgoing and incoming
+pair generation now group writes by predictor. Incoming membership checks can
+use a small in-memory table joined against the unique pair index.
+
+SQLite retains WAL journaling and `synchronous=FULL`. A connection-local page
+cache can use up to approximately 256 MiB as needed; only one family is open at
+a time. These changes do not change model results or disable transactional
+checkpoint durability.
+
+On resume, the input fingerprint is validated before an old `tests_target`
+index is removed in a transaction. No saved test rows, IDs, layer plans or
+completed summaries are deleted or rewritten. Pair membership determines resume
+state, so an interrupted run can continue even if some incoming tests were saved
+in the older order. Removing the index may take a moment and frees pages for
+reuse; it does not necessarily shrink the database file immediately.
+
+Test checkpoint throughput on the same filesystem as the pipeline:
+
+```sh
+python3 scripts/pipeline/benchmark_fdr_checkpoints.py --directory results/pipeline
+```
+
+The benchmark compares the previous index/cache/insertion pattern with the
+optimized path using about one million synthetic rows in each direction. It
+checks saved counts and pair sums, and removes only its own temporary directory.
+It performs no regression fitting and never reads existing pipeline results.
+Use `--pairs 262144` for a shorter check. Reported timings include database
+saves and membership lookups, but exclude row generation and database close;
+the comparison does not predict a full run's speed on another filesystem.
+
 ## GPU and memory
 
 The predictor design is identical across its targets. Each predictor is

@@ -200,6 +200,86 @@ def test_batches_span_predictors_and_resume_mixed_batches(tmp_path):
         family.db.close()
 
 
+def test_incoming_resume_uses_unique_pair_index_and_retains_failures(tmp_path):
+    family = Family(tmp_path / "family", "test")
+    try:
+        block = [(source, 5) for source in range(5)]
+        # A failed fit is still a completed test and must not be recomputed.
+        family.save([block[1], block[3]], (np.zeros(2), np.ones(2), np.zeros(2), np.array([np.nan, 0.5])))
+        assert family.pending(block) == [block[0], block[2], block[4]]
+        indexes = {row[1] for row in family.db.execute("PRAGMA index_list(tests)")}
+        assert "tests_target" not in indexes
+        plan = family.db.execute("""EXPLAIN QUERY PLAN
+            SELECT wanted.source,wanted.target FROM pending_pairs AS wanted
+            WHERE EXISTS (SELECT 1 FROM tests
+                WHERE tests.source=wanted.source AND tests.target=wanted.target)
+        """).fetchall()
+        assert any("SEARCH" in row[-1] and "tests" in row[-1]
+                   and "USING COVERING INDEX" in row[-1] for row in plan)
+    finally:
+        family.db.close()
+
+
+def test_incoming_order_groups_predictors_without_changing_pair_family(tmp_path):
+    family = Family(tmp_path / "family", "test")
+    try:
+        sources, universe = [1, 3], [0, 1, 2, 3, 4]
+        pairs = [pair for block in family.blocks(sources, universe, "incoming", 3) for pair in block]
+        expected = {(source, target) for target in sources for source in universe if source != target}
+        assert set(pairs) == expected
+        assert [source for source, target in pairs] == sorted(source for source, target in pairs)
+        # Resume recognizes previously committed pairs in the old target order.
+        old_order = [(source, target) for target in sources for source in universe if source != target]
+        family.save(old_order[:3], (np.zeros(3), np.ones(3), np.zeros(3), np.ones(3)))
+        assert family.pending(pairs) == [pair for pair in pairs if pair not in old_order[:3]]
+    finally:
+        family.db.close()
+
+
+def test_legacy_checkpoint_index_migration_preserves_results_and_plans(tmp_path):
+    directory = tmp_path / "family"
+    family = Family(directory, "test")
+    family.save([(0, 1), (2, 1)], (np.zeros(2), np.ones(2), np.zeros(2), np.array([np.nan, 0.5])))
+    family.plan("depth_01", [0], [0, 1, 2], "both")
+    with family.db:
+        family.db.execute("CREATE INDEX tests_target ON tests(target)")
+        family.db.execute("UPDATE layers SET result=?", ('{"family_tests": 2}',))
+    before = family.db.execute("SELECT * FROM tests ORDER BY id").fetchall()
+    family.db.close()
+    resumed = Family(directory, "test")
+    try:
+        assert resumed.db.execute("SELECT * FROM tests ORDER BY id").fetchall() == before
+        assert resumed.plan("depth_01", [0], [0, 1, 2], "both") == {"family_tests": 2}
+        assert resumed.db.execute("PRAGMA synchronous").fetchone()[0] == 2
+        assert resumed.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert "tests_target" not in {row[1] for row in resumed.db.execute("PRAGMA index_list(tests)")}
+    finally:
+        resumed.db.close()
+
+
+def test_fingerprint_rejection_does_not_drop_legacy_index(tmp_path):
+    directory = tmp_path / "family"
+    family = Family(directory, "original")
+    with family.db:
+        family.db.execute("CREATE INDEX tests_target ON tests(target)")
+    family.db.close()
+    with pytest.raises(ValueError, match="Resume refused"):
+        Family(directory, "changed")
+    with sqlite3.connect(directory / "tests.sqlite") as db:
+        assert "tests_target" in {row[1] for row in db.execute("PRAGMA index_list(tests)")}
+
+
+def test_failed_checkpoint_transaction_rolls_back_all_rows(tmp_path):
+    family = Family(tmp_path / "family", "test")
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            family.save([(0, 1), (0, 1)], (np.zeros(2), np.ones(2), np.zeros(2), np.ones(2)))
+        assert family.count() == 0
+        assert family.pending([(0, 1)]) == [(0, 1)]
+    finally:
+        family.db.close()
+
+
 def test_cuda_preflight_fails_before_reading_expression(sample_config, monkeypatch):
     import gene_analysis.pipeline.fdr as pipeline
 
