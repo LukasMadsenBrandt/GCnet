@@ -13,7 +13,7 @@ analysis:
   mode: fdr
   workflow: both
   backend: gpu_cuda
-  batch_size: 4096
+  batch_size: 32768
   alpha: 0.05
   comparison_alphas: [0.10]
   direction: both

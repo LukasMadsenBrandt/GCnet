@@ -109,13 +109,38 @@ Increase that budget or remove it to continue. Existing runs with
 
 ## GPU and memory
 
-CuPy caches residualized expression on the device and runs double-precision
-batched SVD regressions. `analysis.batch_size` controls temporary device memory.
+The predictor design is identical across its targets. Each predictor is
+decomposed once using CPU double-precision SVD, then its orthonormal basis and
+interaction contrast are cached on the GPU. Pair fitting uses batched GPU
+projections and reductions rather than repeating SVD per pair. This avoids
+CuPy 13's loop over individual SVD calls for matrices larger than 32 in either
+dimension (these designs have 35 rows). `analysis.batch_size` controls temporary
+device memory. Batches span predictor rows so a larger batch size is actually
+used even when the seed set has fewer genes. The prepared B200 config uses
+32,768 pairs per batch. An implementation update can resume existing checkpoints;
+the model and hypothesis family are unchanged, with floating-point differences
+possible within the tested numerical tolerance.
 SciPy calculates t-distribution tails on the CPU. BH sorts the complete family
 on the CPU; it must not be applied independently to GPU batches. Statistics
 are checkpointed on disk, and CSV export streams rows. Global BH still needs
 host arrays proportional to the number of tests. Allow adequate CPU RAM,
 disk space, and GPU memory for the intended universe.
+
+Fitting progress now reports cumulative `fit_seconds`, `checkpoint_seconds`,
+`lookup_seconds` and `new_tests_per_second` for the current layer and invocation.
+Fitting time includes GPU transfers and CPU p-values. Checkpoint and lookup time
+can dominate after numerical optimization, especially on network filesystems.
+
+Compare the old and cached implementations on a small synthetic workload:
+
+```sh
+python3 scripts/pipeline/benchmark_fdr.py --pairs 4096 --repeats 3
+```
+
+This checks numerical agreement and reports CPU/GPU timings without a real-data
+analysis. Use `--cpu-only` on machines without CUDA. It excludes checkpoints and
+preparation from timings; the live pipeline counters measure checkpoint costs.
+GPU speedup depends on workload and host performance and should be measured.
 
 Kutsche preprocessing reuses the existing WT filter, DESeq-style normalization
 and log1p transformation. Normalization factors are estimated over the supplied

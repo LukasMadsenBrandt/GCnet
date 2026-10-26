@@ -56,35 +56,42 @@ class QuadraticInteraction:
             raise ValueError("FDR backend must be cpu_numpy or gpu_cuda.")
         self.xp = xp
         self.df = values.shape[0] - 5
-        values = xp.asarray(values - values.mean(axis=0))
-        baseline_q = xp.asarray(np.linalg.qr(baseline, mode="reduced")[0])
-        interaction = xp.asarray(time)[:, None] * values
-        self.rank_scale = xp.maximum(
-            xp.linalg.norm(xp.asarray(baseline)),
-            xp.sqrt(xp.sum(values**2 + interaction**2, axis=0)),
+        values = values - values.mean(axis=0)
+        baseline_q = np.linalg.qr(baseline, mode="reduced")[0]
+        interaction = time[:, None] * values
+        rank_scale = np.maximum(
+            np.linalg.norm(baseline),
+            np.sqrt(np.sum(values**2 + interaction**2, axis=0)),
         )
-        self.residual = values - baseline_q @ (baseline_q.T @ values)
-        self.interaction = interaction - baseline_q @ (baseline_q.T @ interaction)
+        residual = values - baseline_q @ (baseline_q.T @ values)
+        interaction = interaction - baseline_q @ (baseline_q.T @ interaction)
+        # A predictor's design is identical for every target. Decompose it ONCE,
+        # on the CPU: CuPy 13 loops over individual SVD calls for 35x2 matrices
+        # because its fast batched solver only accepts dimensions <=32.
+        design = np.stack([residual.T, interaction.T], axis=2)
+        u, singular, vh = np.linalg.svd(design, full_matrices=False)
+        tolerance = np.finfo(float).eps * max(values.shape[0], 5) * rank_scale[:, None]
+        inverse = np.where(singular > tolerance, 1 / np.maximum(singular, np.finfo(float).tiny), 0)
+        self.predictor_valid = xp.asarray(np.all(singular > tolerance, axis=1))
+        self.residual = xp.asarray(residual.T.copy())
+        self.basis = xp.asarray(u)
+        # Row of the pseudoinverse that estimates the interaction coefficient.
+        self.contrast = xp.asarray(np.einsum("gnk,gk->gn", u, vh[:, :, 1] * inverse))
+        self.se_scale = xp.asarray(np.sqrt(np.sum((vh[:, :, 1] * inverse)**2, axis=1)))
 
     def fit(self, predictors, targets):
         """Return coefficient, standard error, t and p arrays; invalid fits are NaN."""
         xp = self.xp
         source = xp.asarray(predictors, dtype=xp.int64)
         target = xp.asarray(targets, dtype=xp.int64)
-        design = xp.stack([self.residual[:, source].T, self.interaction[:, source].T], axis=2)
-        response = self.residual[:, target].T
-        # Batched SVD avoids squaring the condition number via normal equations.
-        u, singular, vh = xp.linalg.svd(design, full_matrices=False)
-        tolerance = (np.finfo(float).eps * max(design.shape[1], 5)
-                     * self.rank_scale[source, None])
-        valid = xp.all(singular > tolerance, axis=1)
-        inverse = xp.where(singular > tolerance, 1 / xp.maximum(singular, np.finfo(float).tiny), 0)
+        u = self.basis[source]
+        response = self.residual[target]
+        valid = self.predictor_valid[source].copy()
         projection = xp.einsum("bni,bn->bi", u, response)
-        beta = xp.einsum("bij,bj->bi", vh.transpose(0, 2, 1), inverse * projection)
-        error = response - xp.einsum("bni,bi->bn", design, beta)
+        error = response - xp.einsum("bni,bi->bn", u, projection)
         variance = xp.sum(error**2, axis=1) / self.df
-        coefficient = beta[:, 1]
-        standard_error = xp.sqrt(variance * xp.sum((vh[:, :, 1] * inverse)**2, axis=1))
+        coefficient = xp.einsum("bn,bn->b", self.contrast[source], response)
+        standard_error = xp.sqrt(variance) * self.se_scale[source]
         valid &= (standard_error > 0) & xp.isfinite(standard_error)
         valid &= source != target
         statistic = coefficient / xp.where(standard_error > 0, standard_error, 1)

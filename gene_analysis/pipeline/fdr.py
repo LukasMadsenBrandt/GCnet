@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 import csv
 import fcntl
 import hashlib
+from itertools import islice
 import json
 from pathlib import Path
 import sqlite3
@@ -177,17 +178,24 @@ class Family:
     def blocks(self, sources, universe, direction, batch_size):
         """Generate jobs without materializing all G*(G-1) pair identities."""
         source_set, universe_set = set(sources), set(universe)
-        if direction in {"both", "outgoing"}:
-            for source in sources:
-                for offset in range(0, len(universe), batch_size):
-                    targets = universe[offset:offset + batch_size]
-                    yield [(source, target) for target in targets if target != source]
-        if direction in {"both", "incoming"}:
-            for target in sources:
-                for offset in range(0, len(universe), batch_size):
-                    predictors = universe[offset:offset + batch_size]
-                    yield [(source, target) for source in predictors if target != source
-                           and not (direction == "both" and source in source_set and target in universe_set)]
+
+        def pairs():
+            if direction in {"both", "outgoing"}:
+                for source in sources:
+                    for target in universe:
+                        if source != target:
+                            yield source, target
+            if direction in {"both", "incoming"}:
+                for target in sources:
+                    for source in universe:
+                        if source != target and not (
+                            direction == "both" and source in source_set and target in universe_set
+                        ):
+                            yield source, target
+
+        iterator = pairs()
+        while block := list(islice(iterator, batch_size)):
+            yield block
 
     def count(self):
         return self.db.execute("SELECT count(*) FROM tests").fetchone()[0]
@@ -195,17 +203,24 @@ class Family:
     def pending(self, block):
         if not block:
             return []
-        # One indexed range lookup per block, rather than a query for every pair.
-        if len({pair[0] for pair in block}) == 1:
-            existing = set(self.db.execute("SELECT source,target FROM tests WHERE source=?", (block[0][0],)))
-        else:
-            existing = set(self.db.execute("SELECT source,target FROM tests WHERE target=?", (block[0][1],)))
+        # Batches can span multiple predictor rows. Use whichever indexed
+        # orientation needs fewer lookups, never one query per pair.
+        sources, targets = {pair[0] for pair in block}, {pair[1] for pair in block}
+        column, keys = ("source", sources) if len(sources) <= len(targets) else ("target", targets)
+        wanted = set(block)
+        existing = {pair for key in keys
+                    for pair in self.db.execute(f"SELECT source,target FROM tests WHERE {column}=?", (key,))
+                    if pair in wanted}
         return [pair for pair in block if pair not in existing]
 
     def save(self, pairs, statistics):
+        values = np.column_stack(statistics)
+        clean = values.astype(object)
+        clean[~np.isfinite(values)] = None
+
         def rows():
-            for pair, numbers in zip(pairs, zip(*statistics)):
-                yield (*pair, *(float(value) if np.isfinite(value) else None for value in numbers))
+            for pair, numbers in zip(pairs, clean.tolist()):
+                yield (*pair, *numbers)
         with self.db:
             self.db.executemany(
                 "INSERT INTO tests(source,target,coefficient,standard_error,statistic,p) VALUES(?,?,?,?,?,?)",
@@ -244,20 +259,32 @@ class FDRRunner:
         planned = outgoing if direction != "both" else 2 * outgoing - overlap * (overlap - 1)
         self.progress(name, status="fitting", family_tests=initial, layer_planned_tests=planned)
         new, checked = 0, 0
+        fitting_seconds, checkpoint_seconds, lookup_seconds = 0.0, 0.0, 0.0
+        layer_started = clock.monotonic()
         for block in family.blocks(sources, universe, direction, self.settings.batch_size):
             checked += len(block)
+            tick = clock.monotonic()
             pairs = family.pending(block)
+            lookup_seconds += clock.monotonic() - tick
             if not pairs:
                 continue
             if self.expired():
                 self.progress(name, status="paused", reason="time_budget", family_tests=initial + new)
                 return None
             source, target = np.asarray(pairs, dtype=int).T
-            family.save(pairs, self.model.fit(source, target))
+            tick = clock.monotonic()
+            statistics = self.model.fit(source, target)
+            fitting_seconds += clock.monotonic() - tick
+            tick = clock.monotonic()
+            family.save(pairs, statistics)
+            checkpoint_seconds += clock.monotonic() - tick
             new += len(pairs)
             self.progress(name, status="fitting", family_tests=initial + new,
                           new_tests_this_invocation=new, layer_planned_tests=planned,
-                          layer_checked_tests=checked, layer_percent=round(100 * checked / max(1, planned), 1))
+                          layer_checked_tests=checked, layer_percent=round(100 * checked / max(1, planned), 1),
+                          fit_seconds=round(fitting_seconds, 3), checkpoint_seconds=round(checkpoint_seconds, 3),
+                          lookup_seconds=round(lookup_seconds, 3),
+                          new_tests_per_second=round(new / max(clock.monotonic() - layer_started, 1e-9), 1))
         result = self.export(family, name, alphas, universe)
         with family.db:
             family.db.execute("UPDATE layers SET result=? WHERE name=?", (json.dumps(result), name))

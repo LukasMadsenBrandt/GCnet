@@ -50,6 +50,26 @@ def test_rank_deficiency_and_self_pairs_are_failed():
     assert np.isnan(p).all()
 
 
+def test_repeated_predictor_batches_reuse_prepared_factorization(monkeypatch):
+    rng = np.random.default_rng(84)
+    time = np.repeat(np.arange(5), 7).astype(float)
+    values = rng.normal(size=(35, 6))
+    model = QuadraticInteraction(values, time)
+
+    def unexpected_svd(*args, **kwargs):
+        pytest.fail("Pair fitting must reuse the predictor decomposition.")
+
+    sources, targets = [0, 0, 0, 2, 2], [1, 2, 3, 1, 4]
+    with monkeypatch.context() as context:
+        context.setattr(np.linalg, "svd", unexpected_svd)
+        actual = model.fit(sources, targets)
+    for i, (source, target) in enumerate(zip(sources, targets)):
+        design = np.column_stack([np.ones(35), time, time**2, values[:, source], time * values[:, source]])
+        reference = sm.OLS(values[:, target], design).fit(method="qr")
+        expected = [reference.params[-1], reference.bse[-1], reference.tvalues[-1], reference.pvalues[-1]]
+        np.testing.assert_allclose([column[i] for column in actual], expected, rtol=1e-10, atol=1e-12)
+
+
 @pytest.fixture
 def sample_config(tmp_path, monkeypatch):
     import gene_analysis.pipeline.runner as runner
@@ -163,6 +183,19 @@ def test_pair_generation_has_unique_union(tmp_path):
         pairs = [pair for block in family.blocks([0, 1], [0, 1, 2, 3], "both", 2) for pair in block]
         assert len(pairs) == len(set(pairs)) == 10
         assert all(a != b for a, b in pairs)
+    finally:
+        family.db.close()
+
+
+def test_batches_span_predictors_and_resume_mixed_batches(tmp_path):
+    family = Family(tmp_path / "family", "test")
+    try:
+        blocks = list(family.blocks([0, 1, 2], [0, 1, 2], "outgoing", 4))
+        assert [len(block) for block in blocks] == [4, 2]
+        assert len({source for source, target in blocks[0]}) == 2
+        saved = [blocks[0][0], blocks[0][2]]
+        family.save(saved, (np.zeros(2), np.ones(2), np.zeros(2), np.ones(2)))
+        assert family.pending(blocks[0]) == [pair for pair in blocks[0] if pair not in saved]
     finally:
         family.db.close()
 
