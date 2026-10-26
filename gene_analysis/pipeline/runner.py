@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import csv
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
@@ -42,6 +42,7 @@ from gene_analysis.datasets.kutsche import preprocess_pipeline
 from gene_analysis.datasets.kutsche import load_and_preprocess_data
 from gene_analysis.analysis.granger_runner import perform_gc
 from gene_analysis.analysis.granger_cuda import perform_gc_cuda
+from gene_analysis.pipeline.fdr import FDRSettings, run_fdr_pipeline
 
 
 STAGES = (
@@ -320,6 +321,8 @@ class PipelineConfig:
     probe_selection: ProbeSelectionConfig = field(default_factory=ProbeSelectionConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     artifacts: Dict[str, Path] = field(default_factory=dict)
+    analysis_mode: str = "gc"
+    analysis: FDRSettings = field(default_factory=FDRSettings)
 
     @property
     def run_dir(self) -> Path:
@@ -340,6 +343,10 @@ class PipelineConfig:
         self.consensus.validate()
         self.probe_selection.validate()
         self.execution.validate()
+        if self.analysis_mode not in {"gc", "fdr"}:
+            raise ValueError("analysis.mode must be gc or fdr.")
+        if self.analysis_mode == "fdr":
+            self.analysis.validate()
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "PipelineConfig":
@@ -404,6 +411,8 @@ class PipelineConfig:
                 progress=_bool_option_from_raw(execution_raw.get("progress", True)),
             ),
             artifacts={key: Path(value) for key, value in artifacts_raw.items() if value is not None},
+            analysis_mode=str((raw.get("analysis") or {}).get("mode", "gc")),
+            analysis=FDRSettings.from_mapping(raw.get("analysis")),
         )
 
 
@@ -975,6 +984,11 @@ class PipelineRunner:
 
     def run(self, *, start_at: str = "00_preprocessing", stop_after: Optional[str] = None) -> dict[str, Path]:
         """Run a contiguous section of the pipeline and return known artifacts."""
+        if self.config.analysis_mode == "fdr":
+            if start_at not in {"00_preprocessing", "0", "00"} or stop_after is not None:
+                raise ValueError("FDR uses analysis.workflow (all_pairs, anchor, both) rather than GC stage names.")
+            self.artifacts = run_fdr_pipeline(self.config)
+            return self.artifacts
         start = normalize_stage(start_at)
         stop = normalize_stage(stop_after) if stop_after else STAGES[-1]
         start_idx = STAGES.index(start)
@@ -1615,6 +1629,8 @@ class PipelineRunner:
 
 def _config_to_dict(config: PipelineConfig) -> dict[str, Any]:
     return {
+        "analysis": {"mode": config.analysis_mode,
+                     **(asdict(config.analysis) if config.analysis_mode == "fdr" else {})},
         "run_name": config.run_name,
         "dataset": {
             "name": config.dataset.name,

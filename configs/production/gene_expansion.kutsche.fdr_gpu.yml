@@ -1,0 +1,31 @@
+# Prepared configuration only. Do not use this for a local smoke test.
+# Input contains the full expression universe; seed_gene_file defines the overview.
+run_name: kutsche_bh_gpu
+dataset:
+  name: kutsche
+  expression_file: Data/Kutsche/Kutsche_Counts.txt
+gene_of_interest: ZEB2
+seed_gene_file: Data/Kutsche/unique_genes.txt
+preprocessing:
+  normalize: deseq
+  transform: log1p
+analysis:
+  mode: fdr
+  workflow: both
+  backend: gpu_cuda
+  batch_size: 4096
+  alpha: 0.05
+  comparison_alphas: [0.10]
+  direction: both
+  max_depth: 10
+  max_nodes: 50
+  # Optional per-invocation wall-time budget: checkpoint, pause, and resume.
+  max_seconds: null
+  genome_expansion: true
+  # The full count matrix contains duplicate symbols; combine counts per sample
+  # by their mean before normalization. This does not aggregate replicates.
+  duplicate_gene_method: mean
+execution:
+  resume: true
+  progress: true
+  gpu_device: 0

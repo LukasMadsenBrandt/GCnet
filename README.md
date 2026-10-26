@@ -133,6 +133,11 @@ see [Example pipeline run layout](examples/PIPELINE_RUN_LAYOUT.md).
 
 ## Documentation
 
+The shared pipeline entrypoint also supports `analysis.mode: fdr` for a
+GPU-capable, resumable quadratic-interaction/BH overview and anchor search.
+See [BH FDR pipeline](docs/BH_FDR_PIPELINE.md) for the small synthetic example,
+progress monitoring, checkpoint semantics, and prepared GPU configuration.
+
 | Need | Read |
 | --- | --- |
 | Scientific idea and pipeline flow | [Pipeline concept](docs/PIPELINE_CONCEPT.md) |

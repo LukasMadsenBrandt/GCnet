@@ -1,0 +1,23 @@
+run_name: fdr_sample
+dataset:
+  name: sample_long
+  expression_file: examples/sample_fdr/expression.csv
+gene_of_interest: ZEB2
+seed_gene_file: examples/sample_fdr/seed_genes.txt
+preprocessing:
+  normalize: none
+  transform: none
+analysis:
+  mode: fdr
+  workflow: both
+  backend: cpu_numpy
+  batch_size: 4
+  alpha: 0.05
+  comparison_alphas: [0.10]
+  direction: both
+  max_depth: 3
+  max_nodes: 50
+  genome_expansion: true
+execution:
+  resume: true
+  progress: true
