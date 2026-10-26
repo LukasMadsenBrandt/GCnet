@@ -22,6 +22,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from gene_analysis.analysis.fdr import QuadraticInteraction, benjamini_hochberg
+from gene_analysis.analysis.cuda_environment import require_cuda_kernels
 from gene_analysis.analysis.preprocessing import aggregate_duplicate_genes, apply_expression_preprocessing
 from gene_analysis.datasets.kutsche import filter_data_wt, load_and_preprocess_data
 
@@ -381,6 +382,9 @@ class FDRRunner:
     def _run_locked(self):
         if not self.config.execution.resume and any(self.directory.glob("*/tests.sqlite")):
             raise ValueError("Existing FDR results found with resume=false; use a new run_name.")
+        if self.settings.backend == "gpu_cuda":
+            self.progress("cuda_preflight", status="checking_kernel_compilation")
+            require_cuda_kernels(self.config.execution.gpu_device)
         self.progress("preprocessing", status="loading_samples")
         values, times, self.genes, subset, missing = load_samples(self.config)
         semantic = asdict(self.settings)

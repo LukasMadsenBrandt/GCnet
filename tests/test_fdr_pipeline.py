@@ -167,6 +167,22 @@ def test_pair_generation_has_unique_union(tmp_path):
         family.db.close()
 
 
+def test_cuda_preflight_fails_before_reading_expression(sample_config, monkeypatch):
+    import gene_analysis.pipeline.fdr as pipeline
+
+    def broken_cuda(device):
+        raise RuntimeError("libnvrtc.so.12 unavailable")
+
+    def unexpected_load(config):
+        pytest.fail("Expression must not be loaded before the CUDA check.")
+
+    monkeypatch.setattr(pipeline, "require_cuda_kernels", broken_cuda)
+    monkeypatch.setattr(pipeline, "load_samples", unexpected_load)
+    config = replace(sample_config, analysis=replace(sample_config.analysis, backend="gpu_cuda"))
+    with pytest.raises(RuntimeError, match="libnvrtc"):
+        run_pipeline(config)
+
+
 def test_no_new_neighbors_still_probes_genome_once(sample_config, monkeypatch):
     def no_signal(self, source, target):
         return np.zeros(len(source)), np.ones(len(source)), np.zeros(len(source)), np.ones(len(source))

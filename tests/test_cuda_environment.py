@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -9,10 +10,39 @@ from gene_analysis.analysis.cuda_environment import (
     _cupy_nvrtc_note,
     collect_cuda_environment_report,
     write_cuda_environment_report,
+    preload_cuda_wheel_libraries,
 )
 
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize("namespace", [True, False])
+def test_preloader_finds_nvrtc_in_namespace_and_regular_packages(tmp_path, monkeypatch, namespace):
+    import gene_analysis.analysis.cuda_environment as environment
+
+    root = tmp_path / "nvidia" / "cuda_nvrtc"
+    (root / "lib").mkdir(parents=True)
+    library = root / "lib" / "libnvrtc.so.12"
+    library.touch()
+    spec = SimpleNamespace(origin=None if namespace else str(root / "__init__.py"),
+                           submodule_search_locations=[str(root)])
+    monkeypatch.setattr(environment.importlib.util, "find_spec",
+                        lambda name: spec if name == "nvidia.cuda_nvrtc" else None)
+    loaded = []
+    monkeypatch.setattr(environment.ctypes, "CDLL", lambda path, mode: loaded.append((path, mode)))
+    preload_cuda_wheel_libraries()
+    assert loaded == [(str(library), environment.ctypes.RTLD_GLOBAL)]
+
+
+def test_preloader_tolerates_missing_nvidia_namespace(monkeypatch):
+    import gene_analysis.analysis.cuda_environment as environment
+
+    def missing(name):
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(environment.importlib.util, "find_spec", missing)
+    preload_cuda_wheel_libraries()
 
 
 def test_collect_cuda_environment_report_is_safe_without_cuda_packages():

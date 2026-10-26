@@ -31,6 +31,11 @@ and set `execution.gpu_device: 0`. The CPU reference is `cpu_numpy`.
 GPU run. It has not been executed as part of implementation. Use an allocated
 GPU node and the existing CUDA environment instructions before running it.
 The implementation raises a CUDA error when no device is available.
+GPU startup also checks kernel compilation before loading expression data.
+For a `libnvrtc.so.12` loader error after installing CUDA requirements, pull
+the latest code (including NVIDIA namespace-package discovery), then run
+`python3 scripts/pipeline/check_cuda.py`. See
+[GPU acceleration](GPU_ACCELERATION.md) for package and library-path checks.
 
 ## The two searches
 

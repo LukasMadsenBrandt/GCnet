@@ -159,7 +159,8 @@ def preload_cuda_wheel_libraries() -> None:
     """
     for module_name, patterns in {
         "nvidia.nvjitlink": ("lib/libnvJitLink.so.12", "lib/libnvJitLink.so"),
-        "nvidia.cublas": ("lib/libcublas.so.12", "lib/libcublasLt.so.12", "lib/libcublas.so"),
+        "nvidia.cuda_runtime": ("lib/libcudart.so.12", "lib/libcudart.so"),
+        "nvidia.cublas": ("lib/libcublasLt.so.12", "lib/libcublas.so.12", "lib/libcublas.so"),
         "nvidia.cusparse": ("lib/libcusparse.so.12", "lib/libcusparse.so"),
         "nvidia.cusolver": ("lib/libcusolver.so.11", "lib/libcusolver.so"),
         "nvidia.cuda_nvrtc": ("lib/libnvrtc.so.12", "lib/libnvrtc.so"),
@@ -168,16 +169,40 @@ def preload_cuda_wheel_libraries() -> None:
             spec = importlib.util.find_spec(module_name)
         except ModuleNotFoundError:
             spec = None
-        if spec is None or spec.origin is None:
+        if spec is None:
             continue
-        root = Path(spec.origin).resolve().parent
-        for pattern in patterns:
-            candidate = root / pattern
-            if candidate.exists():
-                try:
-                    ctypes.CDLL(str(candidate), mode=ctypes.RTLD_GLOBAL)
-                except Exception:
-                    pass
+        # Recent NVIDIA wheels use namespace packages: origin is None, while
+        # submodule_search_locations points to the installed package directory.
+        roots = list(spec.submodule_search_locations or ())
+        if spec.origin:
+            roots.insert(0, str(Path(spec.origin).resolve().parent))
+        for root in dict.fromkeys(roots):
+            for pattern in patterns:
+                candidate = Path(root) / pattern
+                if candidate.exists():
+                    try:
+                        ctypes.CDLL(str(candidate), mode=ctypes.RTLD_GLOBAL)
+                    except OSError:
+                        # Other libraries may still load; the kernel preflight
+                        # below reports the actual CuPy failure to the caller.
+                        pass
+
+
+def require_cuda_kernels(gpu_device: int | None = None):
+    """Load optional wheel libraries and require working kernel compilation.
+
+    Allocation and device discovery can succeed with NVRTC missing. An actual
+    elementwise multiplication checks the compiler before expensive data loads.
+    Return CuPy so numerical callers can use the same selected device.
+    """
+    preload_cuda_wheel_libraries()
+    import cupy as cp
+
+    if gpu_device is not None:
+        cp.cuda.Device(int(gpu_device)).use()
+    values = cp.asarray([1.0, 2.0])
+    (values * values).sum().item()
+    return cp
 
 
 def _package_status(name: str) -> PackageStatus:

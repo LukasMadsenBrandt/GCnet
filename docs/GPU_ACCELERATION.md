@@ -74,11 +74,26 @@ python scripts/pipeline/check_cuda.py
 A useful pip-environment diagnostic is:
 
 ```sh
-python -c "import nvidia.cuda_nvrtc, pathlib; print(pathlib.Path(nvidia.cuda_nvrtc.__file__).parent)"
+python -c "import importlib.util; s = importlib.util.find_spec('nvidia.cuda_nvrtc'); print(list(s.submodule_search_locations) if s else 'not installed')"
 ```
 
 If that import fails, the Python environment does not contain the pip-packaged
 NVRTC library.
+
+Recent NVIDIA wheels can use namespace packages, which have no `__file__`.
+The pipeline locates their libraries through `submodule_search_locations` and
+preloads NVRTC by its full path. If a previously installed environment reports
+`libnvrtc.so.12` missing, pull the latest pipeline code and check the active
+interpreter's installation with:
+
+```sh
+python3 -m pip show nvidia-cuda-nvrtc-cu12
+python3 -m pip install -r requirements-cuda-cupy.txt
+python3 scripts/pipeline/check_cuda.py
+```
+
+FDR runs now test an actual GPU kernel before reading expression data. This
+distinguishes working device discovery from working CUDA kernel compilation.
 
 ## Setup
 

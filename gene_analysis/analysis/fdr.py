@@ -47,15 +47,9 @@ class QuadraticInteraction:
         if np.linalg.matrix_rank(baseline) != 3:
             raise ValueError("Quadratic time baseline is rank deficient.")
         if backend == "gpu_cuda":
-            from gene_analysis.analysis.cuda_environment import preload_cuda_wheel_libraries
+            from gene_analysis.analysis.cuda_environment import require_cuda_kernels
 
-            preload_cuda_wheel_libraries()
-            import cupy as xp
-
-            if gpu_device is not None:
-                xp.cuda.Device(int(gpu_device)).use()
-            # Fail immediately if CUDA cannot execute; never silently fall back.
-            xp.zeros(1).sum().item()
+            xp = require_cuda_kernels(gpu_device)
         elif backend == "cpu_numpy":
             xp = np
         else:
