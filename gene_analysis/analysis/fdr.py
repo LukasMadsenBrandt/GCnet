@@ -71,6 +71,8 @@ class QuadraticInteraction:
         design = np.stack([residual.T, interaction.T], axis=2)
         u, singular, vh = np.linalg.svd(design, full_matrices=False)
         tolerance = np.finfo(float).eps * max(values.shape[0], 5) * rank_scale[:, None]
+        self.predictor_singular_values = singular
+        self.predictor_rank_tolerance = tolerance[:, 0]
         inverse = np.where(singular > tolerance, 1 / np.maximum(singular, np.finfo(float).tiny), 0)
         self.predictor_valid = xp.asarray(np.all(singular > tolerance, axis=1))
         self.residual = xp.asarray(residual.T.copy())

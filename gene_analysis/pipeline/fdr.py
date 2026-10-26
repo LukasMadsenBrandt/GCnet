@@ -139,6 +139,21 @@ def load_samples(config):
     return expression.to_numpy(float).T, times, genes, subset, missing
 
 
+def input_fingerprint(config, values, times, genes, subset):
+    """Identify the exact prepared input and semantic analysis settings."""
+    semantic = asdict(config.analysis)
+    for key in ("batch_size", "max_seconds"):
+        semantic.pop(key)
+    specification = {"schema": 1, "settings": semantic, "genes": genes, "subset": subset,
+                     "anchor": config.gene_of_interest,
+                     "normalize": config.preprocessing.normalize,
+                     "transform": config.preprocessing.transform}
+    digest = hashlib.sha256(json.dumps(specification, sort_keys=True).encode())
+    digest.update(np.ascontiguousarray(values).tobytes())
+    digest.update(np.ascontiguousarray(times).tobytes())
+    return specification, digest.hexdigest()
+
+
 class Family:
     """Disk-backed cumulative unique directed test family."""
 
@@ -441,17 +456,7 @@ class FDRRunner:
             require_cuda_kernels(self.config.execution.gpu_device)
         self.progress("preprocessing", status="loading_samples")
         values, times, self.genes, subset, missing = load_samples(self.config)
-        semantic = asdict(self.settings)
-        for key in ("batch_size", "max_seconds"):
-            semantic.pop(key)
-        specification = {"schema": 1, "settings": semantic, "genes": self.genes, "subset": subset,
-                         "anchor": self.config.gene_of_interest,
-                         "normalize": self.config.preprocessing.normalize,
-                         "transform": self.config.preprocessing.transform}
-        digest = hashlib.sha256(json.dumps(specification, sort_keys=True).encode())
-        digest.update(np.ascontiguousarray(values).tobytes())
-        digest.update(np.ascontiguousarray(times).tobytes())
-        fingerprint = digest.hexdigest()
+        specification, fingerprint = input_fingerprint(self.config, values, times, self.genes, subset)
         manifest = self.directory / "manifest.json"
         if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8"))["fingerprint"] != fingerprint:
             raise ValueError("Resume refused: input data or analysis settings changed. Use a new run_name.")

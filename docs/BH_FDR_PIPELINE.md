@@ -205,6 +205,36 @@ FDR uses `analysis.workflow` rather than GC `--start-at`/`--stop-after` stages.
 
 ## Validation
 
+To investigate failed fits after a completed run, use the original Python
+environment, config and input files:
+
+```sh
+python3 scripts/pipeline/diagnose_fdr_failures.py \
+  --config configs/production/gene_expansion.kutsche.fdr_gpu.yml
+```
+
+No GPU is needed. This validates the exact prepared-input/settings fingerprint,
+opens `anchor/tests.sqlite` read-only, and performs one sequential scan for rows
+whose p-value is NULL. It builds per-gene failure counts without loading the
+entire database into memory. A large checkpoint can take several minutes to
+read; progress prints even while passing through successful rows. The pipeline
+must be complete and not running concurrently.
+
+Every gene's small predictor design is checked once on CPU. Up to 25 failed
+pairs per broad category are additionally rechecked to investigate zero or
+nonfinite standard errors and unexplained historical failures. The full
+pairwise fitting and BH selection are not rerun. Since the original checkpoint
+stored no failure reasons, reports label these as current-input/CPU-recheck
+findings rather than claiming they are historical error messages.
+
+Send `results/pipeline/<run_name>/fdr/anchor_failure_diagnostics.tar.gz`, which
+contains `summary.json`, `README.md`, `failed_predictors.csv`,
+`failed_targets.csv` and a bounded `failed_pair_samples.csv`, plus progress.
+It contains no checkpoint database or raw expression matrix. Use
+`--family all_pairs` to examine the separate seed family, or
+`--samples-per-category 0` to skip pair-level sample rechecks. `--run-dir` can
+point to an existing run if its directory differs from the config's run name.
+
 ```sh
 python3 -m pytest tests/test_fdr_pipeline.py -m 'not cuda'
 python3 -m pytest tests/test_fdr_pipeline.py -m cuda
