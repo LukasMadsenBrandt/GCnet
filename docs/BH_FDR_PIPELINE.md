@@ -1,7 +1,10 @@
 # BH interaction pipeline
 
+For exhaustive testing of every retained genome pair with disk-backed global
+BH/Storey adjustment, see [the genome-wide workflow](GENOME_FDR_PIPELINE.md).
+
 The existing entrypoint now accepts `analysis.mode: gc` (the default) or `fdr`.
-FDR mode implements Jing's exhaustive overview and cumulative anchor heuristic.
+FDR mode implements an exhaustive overview and cumulative anchor heuristic.
 It uses the quadratic interaction model from the existing experiment:
 
 ```
@@ -71,7 +74,7 @@ during correction, and cannot be selected.
 
 The adaptive search reproduces the proposed cumulative-BH heuristic. Selecting
 future tests based on earlier results does not itself establish global adaptive
-FDR control. Its summaries and result email should describe it as exploratory.
+FDR control. Its summaries should describe it as exploratory.
 
 ## Progress, checkpoints, and interruption
 
@@ -86,7 +89,7 @@ Each run writes `results/pipeline/<run_name>/fdr/`:
 - `all_pairs/overview/`, `anchor/depth_01/`, etc., and `anchor/genome_probe/`:
   all tests, selected edge tables for each alpha, summaries and SVG overviews.
 - `anchor/core_genes.txt` and `core_summary.json`: core and local stop reason.
-- `RUN_SUMMARY.md`: results and notes for the later email to Jing.
+- `RUN_SUMMARY.md`: results and interpretation notes.
 
 For example, monitor from another terminal:
 
@@ -192,7 +195,7 @@ Report selected directed edges, undirected pairs, gene coverage, isolated genes,
 components, largest component and edge density at 5% and 10%. SVGs compare degree
 distributions and selected edge counts without drawing millions of lines.
 
-**Concern to include in the later email:** BH may include nearly every gene
+**Interpretation consideration:** BH may include nearly every gene
 and produce a dense network, making a focused gene set difficult to identify.
 Gene coverage and edge density are different quantities; report both.
 
@@ -202,6 +205,9 @@ and `lag` is NaN. This workflow uses the shared pipeline entrypoint and config,
 but has its own overview/traversal stages. It does not run the GC workflow's
 Louvain consensus or probe-ranking stages. GC remains the default workflow.
 FDR uses `analysis.workflow` rather than GC `--start-at`/`--stop-after` stages.
+
+For complete sorted six-column tables and the 95% connectivity versus
+five-ZEB2-neighbor comparison, use the [global BH/Storey experiment](QVALUE_CONNECTIVITY.md).
 
 ## Validation
 

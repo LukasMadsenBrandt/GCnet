@@ -43,10 +43,21 @@ class FDRSettings:
     max_seconds: float | None = None
     genome_expansion: bool = True
     duplicate_gene_method: str = "error"
+    genome_shard_pairs: int = 1_048_576
+    genome_sort_memory: str = "8GB"
+    genome_sort_threads: int = 4
+    genome_stage: str = "report"
+    genome_shards_per_invocation: int | None = None
 
     def validate(self):
-        if self.workflow not in {"both", "all_pairs", "anchor"}:
-            raise ValueError("analysis.workflow must be both, all_pairs or anchor.")
+        if self.workflow not in {"both", "all_pairs", "anchor", "genome_all_pairs"}:
+            raise ValueError("analysis.workflow must be both, all_pairs, anchor or genome_all_pairs.")
+        if self.genome_stage not in {"fit", "adjust", "report"}:
+            raise ValueError("genome_stage must be fit, adjust or report.")
+        if self.genome_shard_pairs < 1 or self.genome_sort_threads < 1:
+            raise ValueError("Genome shard size and sort threads must be positive.")
+        if self.genome_shards_per_invocation is not None and self.genome_shards_per_invocation < 1:
+            raise ValueError("genome_shards_per_invocation must be positive.")
         if self.backend not in {"cpu_numpy", "gpu_cuda"}:
             raise ValueError("analysis.backend must be cpu_numpy or gpu_cuda.")
         if self.direction not in {"both", "outgoing", "incoming"}:
@@ -130,7 +141,8 @@ def load_samples(config):
     genes = expression.index.astype(str).tolist()
     if len(set(genes)) != len(genes) or any(not gene.strip() for gene in genes):
         raise ValueError("Gene identifiers must be unique and nonempty.")
-    requested = list(dict.fromkeys(config.seed_gene_file.read_text(encoding="utf-8").split()))
+    requested = (genes if config.analysis.workflow == "genome_all_pairs" else
+                 list(dict.fromkeys(config.seed_gene_file.read_text(encoding="utf-8").split())))
     lookup = {gene: i for i, gene in enumerate(genes)}
     subset = [lookup[gene] for gene in requested if gene in lookup]
     missing = [gene for gene in requested if gene not in lookup]
@@ -142,6 +154,13 @@ def load_samples(config):
 def input_fingerprint(config, values, times, genes, subset):
     """Identify the exact prepared input and semantic analysis settings."""
     semantic = asdict(config.analysis)
+    # Resource/staging options do not alter statistics. Removing new defaults
+    # also preserves fingerprints of existing seed/adaptive checkpoints.
+    for key in ("genome_shard_pairs", "genome_sort_memory", "genome_sort_threads",
+                "genome_stage", "genome_shards_per_invocation"):
+        semantic.pop(key)
+    if config.analysis.workflow == "genome_all_pairs":
+        semantic.pop("backend")
     for key in ("batch_size", "max_seconds"):
         semantic.pop(key)
     specification = {"schema": 1, "settings": semantic, "genes": genes, "subset": subset,
@@ -544,8 +563,8 @@ class FDRRunner:
                              f"{summary['connected_genes']}/{summary['eligible_genes']} genes connected, "
                              f"density {summary['directed_density']:.2%}, "
                              f"largest component {summary['largest_component_genes']} genes.")
-        lines.extend(["", "## Notes for the later result email to Jing", "",
-                      "Lukas's concern is that BH may include nearly every gene and produce a dense network, "
+        lines.extend(["", "## Interpretation notes", "",
+                      "BH may include nearly every gene and produce a dense network, "
                       "making it difficult to identify a focused set. Report both gene coverage and edge density; "
                       "including all genes does not mean selecting all pairs. Compare 5% with 10% where requested.", "",
                       "The denominator uses the actual unique directed non-self tests. Failed fits remain in N "
@@ -562,4 +581,7 @@ class FDRRunner:
 
 
 def run_fdr_pipeline(config):
+    if config.analysis.workflow == "genome_all_pairs":
+        from gene_analysis.pipeline.genome_fdr import GenomeFDRRunner
+        return GenomeFDRRunner(config).run()
     return FDRRunner(config).run()

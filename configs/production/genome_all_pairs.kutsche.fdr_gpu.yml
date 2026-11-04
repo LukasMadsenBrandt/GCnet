@@ -1,0 +1,31 @@
+# Exhaustive genome family, not seed-to-genome or adaptive expansion.
+# Validate capacity with --plan and --pilot-shards before submitting a full job.
+run_name: kutsche_genome_fdr_gpu
+dataset:
+  name: kutsche
+  expression_file: Data/Kutsche/Kutsche_Counts.txt
+gene_of_interest: ZEB2
+# Required by the shared config schema, ignored by genome_all_pairs.
+seed_gene_file: Data/Kutsche/unique_genes.txt
+preprocessing:
+  normalize: deseq
+  transform: log1p
+analysis:
+  mode: fdr
+  workflow: genome_all_pairs
+  backend: gpu_cuda
+  batch_size: 32768
+  duplicate_gene_method: mean
+  alpha: 0.05
+  comparison_alphas: [0.10]
+  genome_expansion: false
+  genome_shard_pairs: 1048576
+  genome_sort_memory: 8GB
+  genome_sort_threads: 4
+  genome_stage: report
+  genome_shards_per_invocation: null
+  max_seconds: null
+execution:
+  resume: true
+  progress: true
+  gpu_device: 0

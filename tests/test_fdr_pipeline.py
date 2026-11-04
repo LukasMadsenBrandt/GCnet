@@ -11,7 +11,7 @@ import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
 
 from gene_analysis.analysis.fdr import QuadraticInteraction, benjamini_hochberg
-from gene_analysis.pipeline.fdr import FDRRunner, FDRSettings, Family
+from gene_analysis.pipeline.fdr import FDRRunner, FDRSettings, Family, input_fingerprint
 from gene_analysis.pipeline.runner import PipelineConfig, run_pipeline
 
 
@@ -24,6 +24,20 @@ def test_bh_step_up_ties_and_failed_tests():
     # The first rank fails its own inequality; BH still selects both ranks.
     np.testing.assert_allclose(benjamini_hochberg(np.array([0.03, 0.04])), [0.04, 0.04])
     assert benjamini_hochberg(np.array([])).size == 0
+
+
+def test_genome_resource_options_preserve_existing_fingerprint(sample_config):
+    values = np.arange(18, dtype=float).reshape(6, 3)
+    times = np.arange(6, dtype=float)
+    args = (values, times, ["ZEB2", "A", "B"], [0, 1])
+    specification, original = input_fingerprint(sample_config, *args)
+    assert specification["settings"]["genome_expansion"] is True
+    resources = replace(sample_config, analysis=replace(sample_config.analysis,
+        genome_shard_pairs=17, genome_sort_memory="1GB", genome_sort_threads=1,
+        genome_stage="fit", genome_shards_per_invocation=2))
+    assert input_fingerprint(resources, *args)[1] == original
+    changed = replace(sample_config, analysis=replace(sample_config.analysis, genome_expansion=False))
+    assert input_fingerprint(changed, *args)[1] != original
 
 
 def test_quadratic_batches_match_independent_statsmodels():
@@ -122,7 +136,9 @@ def test_entrypoint_overview_local_cumulative_and_idempotent_resume(sample_confi
     assert set(artifacts) == set(repeated)
     for path, content in before.items():
         assert path.read_bytes() == content
-    assert "Lukas's concern" in artifacts["summary"].read_text(encoding="utf-8")
+    summary_text = artifacts["summary"].read_text(encoding="utf-8")
+    assert "Interpretation notes" in summary_text
+    assert "BH may include nearly every gene" in summary_text
 
 
 def test_resume_after_interruption_keeps_committed_batch(sample_config, monkeypatch):
