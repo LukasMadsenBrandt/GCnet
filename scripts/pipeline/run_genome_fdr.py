@@ -22,8 +22,8 @@ def main():
     parser.add_argument("--backend", choices=["cpu_numpy", "gpu_cuda"], help="Override fitting backend; completed fits are reused.")
     args = parser.parse_args()
     config = PipelineConfig.from_yaml(args.config)
-    if config.analysis_mode != "fdr" or config.analysis.workflow != "genome_all_pairs":
-        parser.error("This entry point requires analysis.mode=fdr and workflow=genome_all_pairs.")
+    if config.analysis_mode != "fdr" or config.analysis.workflow not in {"genome_all_pairs", "seed_genome"}:
+        parser.error("This entry point requires analysis.mode=fdr and workflow=genome_all_pairs or seed_genome.")
     overrides = {}
     if args.pilot_shards is not None:
         if args.pilot_shards < 1:
@@ -38,8 +38,9 @@ def main():
     config = replace(config, analysis=replace(config.analysis, **overrides))
     config.validate()
     if args.plan:
-        values, times, genes, _, _ = load_samples(config)
-        tests = len(genes) * (len(genes)-1)
+        values, times, genes, subset, _ = load_samples(config)
+        tests = (len(subset)*(2*len(genes)-len(subset)-1) if config.analysis.workflow == "seed_genome"
+                 else len(genes) * (len(genes)-1))
         ancestor = config.run_dir
         while not ancestor.exists():
             ancestor = ancestor.parent

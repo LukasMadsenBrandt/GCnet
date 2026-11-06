@@ -4,6 +4,11 @@ This workflow tests **every ordered non-self pair of retained genes**, then
 calculates global BH-adjusted p-values and Storey q-values. It uses the shared
 runner with `analysis.mode: fdr` and `analysis.workflow: genome_all_pairs`.
 
+The same disk-backed runner also supports `analysis.workflow: seed_genome`:
+all retained seed genes against the genome, in both directions, with each
+ordered pair included once. See [the seed-to-genome and multi-anchor workflow](SEED_GENOME_ANCHOR_REPORTS.md)
+for its configuration and the saved seed-network exports.
+
 The production input check retained **45,902 genes and 35 WT samples**, giving
 **2,106,947,702 tests**. The earlier seed overview and adaptive core-to-genome
 probe are smaller, different families. Their adjusted values cannot substitute
@@ -189,11 +194,20 @@ continue committed work. `resume: false` rejects an existing run.
   output rather than receiving fabricated adjusted results.
 - `anchor_connections.csv`: estimable anchor pairs with symbols and both
   global adjustments; no separate anchor-family correction.
+- `anchor_connections_all.csv` and `anchor_cutoff_comparison.csv`: corresponding
+  exports for every requested anchor. Set `analysis.report_anchors` to add genes;
+  the production configuration includes ZEB2, ZBTB18 and MECP2. Changing these report
+  anchors does not invalidate existing fits. Each row identifies its anchor.
 - `cutoff_comparison.csv`: both methods at powers 10^-14 through 10^-5,
   the earlier fixed thresholds, and configured alpha/comparison levels.
   It reports directed edges, undirected pairs, active genes, largest weak
   component, anchor component and distinct anchor neighbors. Legacy `zeb2_*`
   column names refer to the configured anchor.
+
+When a reference seed file is available, reports also count connected genes,
+anchor-component genes and neighbors outside that retained seed list. In the
+full-genome workflow the reference list affects reporting only; it does not
+restrict the test family. In `seed_genome` it defines the test family itself.
 - `storey.json`: pi0 diagnostics and failure-policy sensitivity.
 - `fit_metrics.json`, `progress.json`, `summary.json`, `README.md`: performance,
   status and a compact overview.

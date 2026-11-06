@@ -46,6 +46,28 @@ def decode_pairs(pair_ids, genes):
     return source, offset + (offset >= source)
 
 
+def family_pair_ids(ordinals, genes, seed_ids=None):
+    """Map a contiguous family ordinal to a unique global non-self pair ID.
+
+    Seed family: all seed→genome pairs, followed by nonseed→seed pairs.
+    Seed→seed pairs are included once, with both ordered directions retained.
+    """
+    if seed_ids is None:
+        return ordinals
+    seeds = np.asarray(seed_ids, dtype=np.int64)
+    nonseeds = np.setdiff1d(np.arange(genes, dtype=np.int64), seeds)
+    boundary = len(seeds)*(genes-1)
+    first = ordinals < boundary
+    source, target = np.empty_like(ordinals), np.empty_like(ordinals)
+    source[first] = seeds[ordinals[first]//(genes-1)]
+    offset = ordinals[first] % (genes-1)
+    target[first] = offset + (offset >= source[first])
+    remaining = ordinals[~first] - boundary
+    source[~first] = nonseeds[remaining//len(seeds)]
+    target[~first] = seeds[remaining % len(seeds)]
+    return source*(genes-1) + target - (target > source)
+
+
 def pi0_from_counts(tails, count, maximum):
     """Exactly the bootstrap estimator, using additive sufficient statistics."""
     tails = np.asarray(tails, dtype=np.float64)
@@ -113,7 +135,18 @@ class GenomeFDRRunner(FDRRunner):
         self.progress("preprocessing", status="loading_samples")
         values, times, self.genes, subset, missing = load_samples(self.config)
         self.n = len(self.genes)
-        self.total = self.n * (self.n - 1)
+        self.family_seeds = np.asarray(subset, dtype=np.int64) if self.settings.workflow == "seed_genome" else None
+        self.total = (len(subset)*(2*self.n-len(subset)-1) if self.family_seeds is not None
+                      else self.n * (self.n - 1))
+        self.family_name = ("all directed non-self pairs incident to a retained seed" if self.family_seeds is not None
+                            else "all retained directed non-self genome pairs")
+        self.anchors = list(dict.fromkeys((self.config.gene_of_interest, *self.settings.report_anchors)))
+        if any(anchor not in self.genes for anchor in self.anchors):
+            raise ValueError("All report anchors must be retained expression genes.")
+        self.reference_seeds = self.family_seeds
+        if self.reference_seeds is None and self.config.seed_gene_file.is_file():
+            requested = set(self.config.seed_gene_file.read_text().split())
+            self.reference_seeds = np.array([i for i, gene in enumerate(self.genes) if gene in requested], dtype=np.int64)
         specification, self.fingerprint = input_fingerprint(self.config, values, times, self.genes, subset)
         if manifest_path.exists():
             previous = json.loads(manifest_path.read_text())
@@ -121,7 +154,7 @@ class GenomeFDRRunner(FDRRunner):
                 raise ValueError("Resume refused: genome input/settings/schema changed; choose a new run_name.")
         else:
             _json(manifest_path, dict(specification, fingerprint=self.fingerprint, genome_schema=1,
-                  tests=self.total, samples=len(times), family="all retained directed non-self genome pairs",
+                  tests=self.total, samples=len(times), family=self.family_name,
                   model="target ~ 1 + time + time^2 + predictor + time:predictor",
                   tested_coefficient="time:predictor", failure_policy="p=1 internally; NaN in raw output",
                   pair_encoding="source=pair_id//(G-1); offset=pair_id%(G-1); target=offset+(offset>=source)"))
@@ -184,7 +217,7 @@ class GenomeFDRRunner(FDRRunner):
                 model = QuadraticInteraction(values, times, backend=self.settings.backend,
                                              gpu_device=self.config.execution.gpu_device)
             stop = min(self.total, next_pair + self.settings.genome_shard_pairs)
-            ids = np.arange(next_pair, stop, dtype=np.int64)
+            ids = family_pair_ids(np.arange(next_pair, stop, dtype=np.int64), self.n, self.family_seeds)
             result = np.empty((4, len(ids)), dtype=np.float64)
             for begin in range(0, len(ids), self.settings.batch_size):
                 end = min(begin + self.settings.batch_size, len(ids))
@@ -317,109 +350,104 @@ class GenomeFDRRunner(FDRRunner):
         return True
 
     def _report(self):
-        from gene_analysis.experiments.qvalue_connectivity import THRESHOLDS, METRICS, _advance
-        # One ascending pass for both methods; a Storey cutoff maps to BH/ pi0.
-        requests = sorted((threshold / scale, method, threshold)
-                          for method, scale in (("bh", 1.0), ("storey", self.estimate["pi0"]))
-                          for threshold in sorted(set((*THRESHOLDS, self.settings.alpha, *self.settings.comparison_alphas))))
-        parent = np.arange(self.n, dtype=np.int32)
-        sizes = np.ones(self.n, dtype=np.int64)
-        active = np.zeros(self.n, dtype=bool)
-        bits = np.zeros((self.n*self.n+7)//8, dtype=np.uint8)
-        neighbors = np.zeros(self.n, dtype=bool)
-        anchor = self.genes.index(self.config.gene_of_interest)
-        state = np.array([1, 0, 0, 0, 0, 0], dtype=np.int64)
-        metrics = np.array([[0, 0, 0, 1, 1, 1, 0, 0, 0]], dtype=np.int64)
-        total_edges, request = 0, 0
-        rows = []
-        zeb_path = self.directory / "anchor_connections.csv"
-        zeb_tmp = zeb_path.with_suffix(".csv.tmp")
-
-        def record():
-            _, method, cutoff = requests[request]
-            row = dict(method=method, criterion="fixed_threshold", cutoff=cutoff,
-                       **dict(zip(METRICS, map(int, metrics[0]))))
-            row["directed_connections"] = total_edges
-            row["zeb2_in_largest_component"] = bool(row["zeb2_in_largest_component"])
-            rows.append(row)
-
-        with zeb_tmp.open("w", newline="") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(["Genefrom", "Geneto", "p-value", "bh_adjusted_p_value", "storey_q_value"])
+        from gene_analysis.analysis.anchor_graph import ThresholdGraph
+        from gene_analysis.experiments.qvalue_connectivity import THRESHOLDS
+        graph = ThresholdGraph(self.genes, self.anchors, self.estimate["pi0"],
+                               (*THRESHOLDS, self.settings.alpha, *self.settings.comparison_alphas),
+                               reference_seeds=self.reference_seeds)
+        primary = self.config.gene_of_interest
+        primary_path = self.directory / "anchor_connections.csv"
+        all_path = self.directory / "anchor_connections_all.csv"
+        primary_tmp = primary_path.with_suffix(".csv.tmp")
+        all_tmp = all_path.with_suffix(".csv.tmp")
+        with primary_tmp.open("w", newline="") as first, all_tmp.open("w", newline="") as all_handle:
+            writer, all_writer = csv.writer(first), csv.writer(all_handle)
+            header = ["Genefrom", "Geneto", "p-value", "bh_adjusted_p_value", "storey_q_value"]
+            writer.writerow(header)
+            all_writer.writerow(["anchor", "direction", *header])
             for path in sorted((self.directory / "adjusted").glob("*.parquet")):
                 if self.expired():
                     return False
                 table = self.pq.read_table(path)
-                source = table["source_id"].to_numpy()
-                target = table["target_id"].to_numpy()
-                q = table["bh_adjusted_p_value"].to_numpy()
-                storey_q = table["storey_q_value"].to_numpy()
-                p = table["raw_p_value"].to_numpy()
-                for i in np.flatnonzero((source == anchor) | (target == anchor)):
-                    writer.writerow([self.genes[source[i]], self.genes[target[i]], p[i], q[i], q[i]*self.estimate["pi0"]])
-                position = 0
-                while request < len(requests):
-                    _, method, threshold = requests[request]
-                    # Compare the actual exported values, avoiding rounding at
-                    # an inclusive Storey boundary from dividing by pi0.
-                    selected_q = q if method == "bh" else storey_q
-                    end = int(np.searchsorted(selected_q, threshold, side="right"))
-                    if end > position:
-                        a, b = source[position:end], target[position:end]
-                        _advance(a, b, np.array([len(a)], dtype=np.int64), 0, 1,
-                                 parent, sizes, active, bits, neighbors, anchor, state, metrics)
-                        total_edges += end-position
-                        position = end
-                    if end == len(q):
-                        break  # Complete ties can cross shard boundaries.
-                    record()
-                    request += 1
+                source, target = table["source_id"].to_numpy(), table["target_id"].to_numpy()
+                q, p = table["bh_adjusted_p_value"].to_numpy(), table["raw_p_value"].to_numpy()
+                storey = table["storey_q_value"].to_numpy()
+                for anchor, node in zip(graph.anchors, graph.anchor_ids):
+                    for i in np.flatnonzero((source == node) | (target == node)):
+                        row = [self.genes[source[i]], self.genes[target[i]], p[i], q[i], storey[i]]
+                        all_writer.writerow([anchor, "outgoing" if source[i] == node else "incoming", *row])
+                        if anchor == primary:
+                            writer.writerow(row)
+                graph.consume(source, target, q)
                 self.progress("report", status="scanning", shard=path.name,
-                              selected_edges_scanned=total_edges, thresholds_completed=request)
-        while request < len(requests):
-            record()
-            request += 1
-        _commit(zeb_tmp, zeb_path)
+                              selected_edges_scanned=int(graph.state[0]),
+                              thresholds_completed=graph.next_request)
+        rows = sorted(graph.finish(), key=lambda row: (row["anchor"], row["method"], row["cutoff"]))
+        _commit(primary_tmp, primary_path)
+        _commit(all_tmp, all_path)
+
+        def write_csv(path, records):
+            temporary = path.with_suffix(".csv.tmp")
+            with temporary.open("w", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(records[0]))
+                writer.writeheader()
+                writer.writerows(records)
+            _commit(temporary, path)
+
+        comparison = self.directory / "anchor_cutoff_comparison.csv"
+        write_csv(comparison, rows)
+        # Retain the existing primary-anchor table/column names for consumers.
+        legacy = []
+        for row in rows:
+            if row["anchor"] != primary:
+                continue
+            mapped = dict(row)
+            mapped.pop("anchor")
+            mapped["criterion"] = "fixed_threshold"
+            for before, after in (("anchor_component_nodes", "zeb2_component_nodes"),
+                                  ("anchor_in_largest_component", "zeb2_in_largest_component"),
+                                  ("distinct_neighbors", "zeb2_neighbors"),
+                                  ("outgoing_neighbors", "zeb2_outgoing_connections"),
+                                  ("incoming_neighbors", "zeb2_incoming_connections")):
+                mapped[after] = mapped.pop(before)
+            legacy.append(mapped)
         path = self.directory / "cutoff_comparison.csv"
-        temporary = path.with_suffix(".csv.tmp")
-        with temporary.open("w", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
-            writer.writeheader()
-            writer.writerows(sorted(rows, key=lambda row: (row["method"], row["cutoff"])))
-        _commit(temporary, path)
+        write_csv(path, legacy)
         _json(self.directory / "summary.json", dict(status="complete", fingerprint=self.fingerprint,
               genes=self.n, tests=self.total, failed_tests=self.failed, storey=self.estimate,
-              family="all retained directed non-self pairs", connectivity="weak; all retained genes in denominator",
-              anchor=self.config.gene_of_interest, anchor_export="estimable pairs only; failures retained in raw shards",
+              family=self.family_name, connectivity="weak; all retained genes in denominator",
+              anchor=primary, report_anchors=self.anchors, report_schema=2,
+              reference_seed_genes=None if self.reference_seeds is None else [self.genes[i] for i in self.reference_seeds],
+              anchor_export="estimable pairs only; failures retained in raw shards",
               cutoff_rows=len(rows)))
         readme = self.directory / "README.md"
         temporary = readme.with_suffix(".md.tmp")
         temporary.write_text(
-            "# Exhaustive genome interaction results\n\n"
-            f"Genes: {self.n:,}; directed non-self tests: {self.total:,}; "
+            "# Global interaction results\n\n"
+            f"Family: {self.family_name}. Genes: {self.n:,}; directed tests: {self.total:,}; "
             f"non-estimable tests: {self.failed:,}.\n\n"
-            "The family includes every retained gene in both predictor and target roles. "
-            "BH and Storey are adjusted globally, never per shard or anchor subset. "
-            "Failed tests remain in the denominator as p=1 placeholders; actual raw values are NaN.\n\n"
-            f"Storey pi0: {self.estimate['pi0']:.12g}; closed-form bootstrap, pfdr=False. "
-            "Storey q = pi0 * BH-adjusted p. Sensitivity excluding failures is in storey.json.\n\n"
-            "- raw/: committed Parquet fitting shards, including failed tests and coefficients.\n"
-            "- adjusted/: estimable pairs with raw p, global BH and Storey values. "
-            "Read files in filename order for increasing adjusted value.\n"
-            "- genes.csv: integer gene IDs and symbols. pair_id joins raw and adjusted data.\n"
-            "- cutoff_comparison.csv: fixed adjusted-value cutoffs and graph counts. "
-            "Components ignore arrow direction; neighbors are distinct directly linked genes. "
-            "The legacy zeb2_* column names refer to the configured anchor.\n"
-            "- anchor_connections.csv: all estimable anchor pairs with global adjustments. "
-            "No separate anchor correction is applied.\n"
-            "- manifest.json, storey.json, summary.json: provenance and statistical definitions.\n"
-            "- fit_metrics.json: measured fitting/checkpoint throughput; excludes downstream stages.\n\n"
-            "Thresholds are fractions (0.001 = 0.1%) and use adjusted value <= cutoff. "
-            "The graph statistics are descriptive; they do not validate p-value calibration "
-            "or establish causal regulation. This workflow does not perform community detection "
-            "or select a biologically optimal cutoff.\n"
+            "Each ordered pair is counted once. Seed-to-seed tests are included in the seed-to-genome "
+            "family. BH and Storey use every planned test in the family, never separate shard corrections. "
+            "Failed tests are p=1 placeholders internally, NaN in raw output and omitted from adjusted output.\n\n"
+            f"Storey pi0: {self.estimate['pi0']:.12g}; bootstrap estimator, pfdr=False. "
+            "Storey q = pi0 * BH-adjusted p. See storey.json for sensitivity excluding failures.\n\n"
+            "- raw/: committed model statistics including failures; adjusted/: global p/BH/Storey values.\n"
+            "- genes.csv: IDs and symbols; pair_id joins raw and adjusted data.\n"
+            "- anchor_cutoff_comparison.csv: all anchors, global graph counts, in/out/distinct neighbors, "
+            "weak component sizes, and counts outside the reference seed list when available.\n"
+            "- cutoff_comparison.csv: primary-anchor view with legacy zeb2_* names.\n"
+            "- anchor_connections_all.csv: estimable directed pairs for every requested anchor; "
+            "anchor_connections.csv retains only the primary anchor. Global adjustments are preserved.\n"
+            "- manifest.json, summary.json, storey.json: provenance and definitions.\n"
+            "- fit_metrics.json: fitting/checkpoint throughput only.\n\n"
+            "Thresholds are fractions, selected with adjusted value <= cutoff. Connected components "
+            "ignore direction; neighbors are distinct directly linked genes. Outside-seed counts concern "
+            "the reference list after input filtering. directed_edges_times_cutoff is descriptive, "
+            "not a validated conditional expected false-edge count or proof of zero errors. "
+            "Community detection and causal interpretation are separate downstream questions.\n"
         )
         _commit(temporary, readme)
-        self.artifacts.update(cutoffs=path, anchor_connections=zeb_path, summary=self.directory / "summary.json",
+        self.artifacts.update(cutoffs=path, anchor_cutoffs=comparison, anchor_connections=primary_path,
+                              all_anchor_connections=all_path, summary=self.directory / "summary.json",
                               adjusted=self.directory / "adjusted", raw=self.directory / "raw", readme=readme)
         return True

@@ -48,10 +48,13 @@ class FDRSettings:
     genome_sort_threads: int = 4
     genome_stage: str = "report"
     genome_shards_per_invocation: int | None = None
+    report_anchors: tuple[str, ...] = ()
 
     def validate(self):
-        if self.workflow not in {"both", "all_pairs", "anchor", "genome_all_pairs"}:
-            raise ValueError("analysis.workflow must be both, all_pairs, anchor or genome_all_pairs.")
+        if self.workflow not in {"both", "all_pairs", "anchor", "genome_all_pairs", "seed_genome"}:
+            raise ValueError("analysis.workflow must be both, all_pairs, anchor, genome_all_pairs or seed_genome.")
+        if any(not isinstance(a, str) or not a.strip() for a in self.report_anchors):
+            raise ValueError("report_anchors must contain nonempty gene identifiers.")
         if self.genome_stage not in {"fit", "adjust", "report"}:
             raise ValueError("genome_stage must be fit, adjust or report.")
         if self.genome_shard_pairs < 1 or self.genome_sort_threads < 1:
@@ -79,6 +82,8 @@ class FDRSettings:
         raw.pop("mode", None)
         if "comparison_alphas" in raw:
             raw["comparison_alphas"] = tuple(raw["comparison_alphas"])
+        if "report_anchors" in raw:
+            raw["report_anchors"] = tuple(raw["report_anchors"])
         settings = cls(**raw)
         settings.validate()
         return settings
@@ -157,9 +162,9 @@ def input_fingerprint(config, values, times, genes, subset):
     # Resource/staging options do not alter statistics. Removing new defaults
     # also preserves fingerprints of existing seed/adaptive checkpoints.
     for key in ("genome_shard_pairs", "genome_sort_memory", "genome_sort_threads",
-                "genome_stage", "genome_shards_per_invocation"):
+                "genome_stage", "genome_shards_per_invocation", "report_anchors"):
         semantic.pop(key)
-    if config.analysis.workflow == "genome_all_pairs":
+    if config.analysis.workflow in {"genome_all_pairs", "seed_genome"}:
         semantic.pop("backend")
     for key in ("batch_size", "max_seconds"):
         semantic.pop(key)
@@ -581,7 +586,7 @@ class FDRRunner:
 
 
 def run_fdr_pipeline(config):
-    if config.analysis.workflow == "genome_all_pairs":
+    if config.analysis.workflow in {"genome_all_pairs", "seed_genome"}:
         from gene_analysis.pipeline.genome_fdr import GenomeFDRRunner
         return GenomeFDRRunner(config).run()
     return FDRRunner(config).run()

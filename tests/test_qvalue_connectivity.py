@@ -19,6 +19,23 @@ from gene_analysis.experiments.qvalue_connectivity import (
 )
 
 
+def test_multi_anchor_export_uses_global_adjustment(saved_seed_run, tmp_path):
+    pytest.importorskip("numba")
+    from scripts.experiments.seed_anchor_report import run
+    root = saved_seed_run
+    # The fixture keeps the literal symbol NA, which must not become missing.
+    output = run(root, tmp_path / "anchor_report", ["ZEB2", "NA"], cutoff=.05)
+    source = pd.read_csv(root / "all_pairs/overview/all_tests.csv", keep_default_na=False,
+                         na_values={"raw_p_value": [""], "bh_adjusted_p_value": [""]})
+    for anchor in ("ZEB2", "NA"):
+        frame = pd.read_csv(output / f"{anchor}_bh_edges_q_0.05.csv", keep_default_na=False)
+        selected = source[((source.predictor_gene == anchor) | (source.target_gene == anchor)) &
+                          (source.bh_adjusted_p_value <= .05)]
+        assert set(zip(frame.Genefrom, frame.Geneto)) == set(zip(selected.predictor_gene, selected.target_gene))
+        assert frame.q_value.is_monotonic_increasing
+    assert set(pd.read_csv(output / "anchor_cutoff_comparison.csv", keep_default_na=False).anchor) == {"ZEB2", "NA"}
+
+
 def test_storey_bootstrap_against_independent_r_reference(tmp_path):
     if not shutil.which("Rscript"):
         pytest.skip("R is optional; this reference check needs base R.")

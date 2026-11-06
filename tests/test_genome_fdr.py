@@ -15,7 +15,7 @@ pytest.importorskip("numba")
 
 from gene_analysis.analysis.fdr import benjamini_hochberg
 from gene_analysis.analysis.storey import bootstrap_pi0, storey_qvalues
-from gene_analysis.pipeline.genome_fdr import GenomeFDRRunner, decode_pairs, pi0_from_counts, GRID
+from gene_analysis.pipeline.genome_fdr import GenomeFDRRunner, decode_pairs, family_pair_ids, pi0_from_counts, GRID
 from gene_analysis.pipeline.runner import PipelineConfig, run_pipeline
 
 
@@ -246,3 +246,45 @@ def test_corrupt_sort_or_adjustment_is_refused(genome_config, damage):
         pq.write_table(table, path)
     with pytest.raises(ValueError, match=match):
         run_pipeline(config)
+
+
+def test_seed_genome_family_global_adjustments_and_multiple_anchors(genome_config):
+    config = genome_config
+    config.seed_gene_file.write_text("ZEB2\nG1\nG2\n")
+    config = replace(config, analysis=replace(config.analysis, workflow="seed_genome", report_anchors=("G1",)))
+    pilot = replace(config, analysis=replace(config.analysis, genome_shards_per_invocation=1))
+    run_pipeline(pilot)
+    run_pipeline(config)
+    root = config.run_dir / "genome_fdr"
+    genes = pd.read_csv(root / "genes.csv").gene.tolist()
+    seed_ids = [genes.index(g) for g in ("ZEB2", "G1", "G2")]
+    expected = {(a,b) for a in range(12) for b in range(12) if a != b and (a in seed_ids or b in seed_ids)}
+    raw = _read_parts(root / "raw")
+    a, b = decode_pairs(raw.pair_id.to_numpy(), 12)
+    assert len(raw) == len(expected) == 3*(24-3-1)
+    assert len(set(raw.pair_id)) == len(raw)
+    assert set(zip(a,b)) == expected
+    assert sum(x in seed_ids and y in seed_ids for x,y in zip(a,b)) == 3*2
+    adjusted = _read_parts(root / "adjusted")
+    expected_bh = pd.Series(benjamini_hochberg(raw.raw_p_value.to_numpy()), index=raw.pair_id)
+    np.testing.assert_allclose(adjusted.bh_adjusted_p_value, expected_bh.loc[adjusted.pair_id], rtol=1e-14)
+    report = pd.read_csv(root / "anchor_cutoff_comparison.csv")
+    assert set(report.anchor) == {"ZEB2", "G1"}
+    for row in report.itertuples():
+        q = adjusted.bh_adjusted_p_value if row.method == "bh" else adjusted.storey_q_value
+        selected = adjusted[q <= row.cutoff]
+        active = set(selected.source_id) | set(selected.target_id)
+        assert row.connected_genes_outside_seed_list == len(active - set(seed_ids))
+        assert row.connected_seed_genes == len(active & set(seed_ids))
+        assert row.reference_seed_genes == 3
+    assert set(pd.read_csv(root / "anchor_connections_all.csv").anchor) == {"ZEB2", "G1"}
+
+
+def test_seed_pair_ids_cover_family_once_including_all_seed_case():
+    for seeds in ([3, 1], list(range(5))):
+        count = len(seeds)*(10-len(seeds)-1)
+        ids = family_pair_ids(np.arange(count, dtype=np.int64), 5, seeds)
+        a, b = decode_pairs(ids, 5)
+        assert len(set(ids)) == count
+        assert set(zip(a,b)) == {(x,y) for x in range(5) for y in range(5)
+                                 if x != y and (x in seeds or y in seeds)}

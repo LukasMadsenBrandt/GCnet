@@ -13,6 +13,7 @@ preprocessing:
 analysis:
   mode: fdr
   workflow: genome_all_pairs
+  report_anchors: [ZEB2, ZBTB18, MECP2]
   backend: gpu_cuda
   batch_size: 32768
   duplicate_gene_method: mean
