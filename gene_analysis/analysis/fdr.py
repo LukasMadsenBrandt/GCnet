@@ -133,18 +133,35 @@ class QuadraticInteraction:
         if xp is not np:
             xp.cuda.get_current_stream().synchronize()
         compute_seconds = clock.perf_counter() - started
-        started = clock.perf_counter()
-        if xp is not np:
-            transferred = xp.asnumpy(xp.stack(arrays))
-            arrays = [transferred[index] for index in range(len(transferred))]
-        transfer_seconds = clock.perf_counter() - started
-        started = clock.perf_counter()
-        p_value = 2 * student_t.sf(np.abs(arrays[2]), self.df)
-        pvalue_seconds = clock.perf_counter() - started
+        if xp is np:
+            transfer_seconds = 0.0
+            started = clock.perf_counter()
+            p_value = 2 * student_t.sf(np.abs(arrays[2]), self.df)
+            pvalue_seconds = clock.perf_counter() - started
+            pvalue_timing = {"cpu_pvalue_seconds": pvalue_seconds}
+        else:
+            # For a two-sided t test, p = I_x(df/2, 1/2), where
+            # x = df / (df + t**2). Computing the equivalent incomplete-beta
+            # expression on the device avoids making the CPU the batch bottleneck.
+            from cupyx.scipy.special import betainc
+
+            started = clock.perf_counter()
+            statistic = arrays[2]
+            statistic_squared = statistic**2
+            x = self.df / (self.df + statistic_squared)
+            p_value = betainc(self.df / 2.0, 0.5, x)
+            xp.cuda.get_current_stream().synchronize()
+            pvalue_seconds = clock.perf_counter() - started
+            started = clock.perf_counter()
+            transferred = xp.asnumpy(xp.stack((*arrays, p_value)))
+            arrays = [transferred[index] for index in range(4)]
+            p_value = transferred[4]
+            transfer_seconds = clock.perf_counter() - started
+            pvalue_timing = {"gpu_pvalue_seconds": pvalue_seconds}
         self.last_timings = dict(index_transfer_seconds=index_seconds,
                                  model_compute_seconds=compute_seconds,
                                  result_transfer_seconds=transfer_seconds,
-                                 cpu_pvalue_seconds=pvalue_seconds)
+                                 **pvalue_timing)
         result = (*arrays[:3], p_value)
         return (*result, arrays[3]) if diagnostics else result
 

@@ -86,7 +86,7 @@ def main():
     target = (source + 1 + indices % (args.genes - 1)) % args.genes
     report = {"model": args.model, "samples": 35, "genes": args.genes, "pairs": args.pairs,
               "repeats": args.repeats,
-              "timing_scope": "warm fit with SSE diagnostic, CPU p-values and result transfers; excludes preparation/checkpoints"}
+              "timing_scope": "warm fit with SSE diagnostic, backend p-values and result transfers; excludes preparation/checkpoints"}
     cpu = QuadraticInteraction(values, times, model=args.model)
     cached_cpu, reference = measure(lambda: cpu.fit_with_diagnostics(source, target), args.repeats)
     report.update(cached_cpu_seconds=cached_cpu,
