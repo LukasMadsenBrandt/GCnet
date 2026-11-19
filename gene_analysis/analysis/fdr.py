@@ -1,6 +1,6 @@
-"""Batched quadratic interaction tests and Benjamini–Hochberg adjustment.
+"""Batched time-interaction tests and Benjamini–Hochberg adjustment.
 
-The model is target ~ 1 + time + time**2 + predictor + time*predictor.
+The default model is target ~ 1 + time + time**2 + predictor + time*predictor.
 The two-sided OLS t test concerns the interaction coefficient, not causality.
 """
 
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.stats import t as student_t
+import time as clock
 
 
 def benjamini_hochberg(p_values: np.ndarray) -> np.ndarray:
@@ -31,21 +32,36 @@ def benjamini_hochberg(p_values: np.ndarray) -> np.ndarray:
     return result
 
 
-class QuadraticInteraction:
-    """Cache time-residualized sample data on CPU or GPU and fit pair batches."""
+INTERACTION_MODELS = {
+    "model0": dict(quadratic_time=True, quadratic_predictor=False, parameters=5),
+    "model1": dict(quadratic_time=True, quadratic_predictor=True, parameters=6),
+    "model2": dict(quadratic_time=False, quadratic_predictor=False, parameters=4),
+}
 
-    def __init__(self, expression, time, *, backend="cpu_numpy", gpu_device=None):
+
+class QuadraticInteraction:
+    """Cache residualized sample data on CPU or GPU and fit pair batches."""
+
+    def __init__(self, expression, time, *, backend="cpu_numpy", gpu_device=None,
+                 model="model0"):
         values = np.asarray(expression, dtype=np.float64)
         time = np.asarray(time, dtype=np.float64)
         if values.ndim != 2 or time.shape != (values.shape[0],):
             raise ValueError("Expected expression (samples, genes) and time (samples,).")
-        if values.shape[0] <= 5 or not np.isfinite(values).all() or not np.isfinite(time).all():
-            raise ValueError("Need more than five samples and finite expression/time.")
+        if model not in INTERACTION_MODELS:
+            raise ValueError(f"Unknown interaction model: {model}")
+        specification = INTERACTION_MODELS[model]
+        if (values.shape[0] <= specification["parameters"] or not np.isfinite(values).all()
+                or not np.isfinite(time).all()):
+            raise ValueError("Need more samples than model parameters and finite expression/time.")
         # Centering preserves this model's interaction coefficient and p-value.
         time = time - time.mean()
-        baseline = np.column_stack([np.ones(len(time)), time, time**2])
-        if np.linalg.matrix_rank(baseline) != 3:
-            raise ValueError("Quadratic time baseline is rank deficient.")
+        baseline_columns = [np.ones(len(time)), time]
+        if specification["quadratic_time"]:
+            baseline_columns.append(time**2)
+        baseline = np.column_stack(baseline_columns)
+        if np.linalg.matrix_rank(baseline) != baseline.shape[1]:
+            raise ValueError("Time baseline is rank deficient.")
         if backend == "gpu_cuda":
             from gene_analysis.analysis.cuda_environment import require_cuda_kernels
 
@@ -55,20 +71,29 @@ class QuadraticInteraction:
         else:
             raise ValueError("FDR backend must be cpu_numpy or gpu_cuda.")
         self.xp = xp
-        self.df = values.shape[0] - 5
+        self.model = model
+        self.parameters = specification["parameters"]
+        self.samples = values.shape[0]
+        self.df = self.samples - self.parameters
         values = values - values.mean(axis=0)
+        self.target_sum_squares = np.sum(values**2, axis=0)
         baseline_q = np.linalg.qr(baseline, mode="reduced")[0]
         interaction = time[:, None] * values
-        rank_scale = np.maximum(
-            np.linalg.norm(baseline),
-            np.sqrt(np.sum(values**2 + interaction**2, axis=0)),
-        )
+        design_norm = values**2 + interaction**2
+        if specification["quadratic_predictor"]:
+            design_norm = design_norm + values**4
+        rank_scale = np.maximum(np.linalg.norm(baseline), np.sqrt(np.sum(design_norm, axis=0)))
         residual = values - baseline_q @ (baseline_q.T @ values)
         interaction = interaction - baseline_q @ (baseline_q.T @ interaction)
         # A predictor's design is identical for every target. Decompose it ONCE,
-        # on the CPU: CuPy 13 loops over individual SVD calls for 35x2 matrices
+        # on the CPU: CuPy 13 loops over individual SVD calls for these small matrices
         # because its fast batched solver only accepts dimensions <=32.
-        design = np.stack([residual.T, interaction.T], axis=2)
+        design_columns = [residual.T, interaction.T]
+        if specification["quadratic_predictor"]:
+            predictor_squared = values**2
+            predictor_squared -= baseline_q @ (baseline_q.T @ predictor_squared)
+            design_columns.append(predictor_squared.T)
+        design = np.stack(design_columns, axis=2)
         u, singular, vh = np.linalg.svd(design, full_matrices=False)
         tolerance = np.finfo(float).eps * max(values.shape[0], 5) * rank_scale[:, None]
         self.predictor_singular_values = singular
@@ -78,27 +103,55 @@ class QuadraticInteraction:
         self.residual = xp.asarray(residual.T.copy())
         self.basis = xp.asarray(u)
         # Row of the pseudoinverse that estimates the interaction coefficient.
-        self.contrast = xp.asarray(np.einsum("gnk,gk->gn", u, vh[:, :, 1] * inverse))
-        self.se_scale = xp.asarray(np.sqrt(np.sum((vh[:, :, 1] * inverse)**2, axis=1)))
+        interaction_inverse = vh[:, :, 1] * inverse
+        self.contrast = xp.asarray(np.einsum("gnk,gk->gn", u, interaction_inverse))
+        self.se_scale = xp.asarray(np.sqrt(np.sum(interaction_inverse**2, axis=1)))
 
-    def fit(self, predictors, targets):
-        """Return coefficient, standard error, t and p arrays; invalid fits are NaN."""
+    def _fit(self, predictors, targets, diagnostics):
         xp = self.xp
+        started = clock.perf_counter()
         source = xp.asarray(predictors, dtype=xp.int64)
         target = xp.asarray(targets, dtype=xp.int64)
+        if xp is not np:
+            xp.cuda.get_current_stream().synchronize()
+        index_seconds = clock.perf_counter() - started
+        started = clock.perf_counter()
         u = self.basis[source]
         response = self.residual[target]
         valid = self.predictor_valid[source].copy()
         projection = xp.einsum("bni,bn->bi", u, response)
         error = response - xp.einsum("bni,bi->bn", u, projection)
-        variance = xp.sum(error**2, axis=1) / self.df
+        residual_sum_squares = xp.sum(error**2, axis=1)
+        variance = residual_sum_squares / self.df
         coefficient = xp.einsum("bn,bn->b", self.contrast[source], response)
         standard_error = xp.sqrt(variance) * self.se_scale[source]
         valid &= (standard_error > 0) & xp.isfinite(standard_error)
         valid &= source != target
         statistic = coefficient / xp.where(standard_error > 0, standard_error, 1)
-        arrays = [xp.where(valid, value, xp.nan) for value in (coefficient, standard_error, statistic)]
+        values = (coefficient, standard_error, statistic, residual_sum_squares)
+        arrays = [xp.where(valid, value, xp.nan) for value in values]
         if xp is not np:
-            arrays = [xp.asnumpy(value) for value in arrays]
+            xp.cuda.get_current_stream().synchronize()
+        compute_seconds = clock.perf_counter() - started
+        started = clock.perf_counter()
+        if xp is not np:
+            transferred = xp.asnumpy(xp.stack(arrays))
+            arrays = [transferred[index] for index in range(len(transferred))]
+        transfer_seconds = clock.perf_counter() - started
+        started = clock.perf_counter()
         p_value = 2 * student_t.sf(np.abs(arrays[2]), self.df)
-        return (*arrays, p_value)
+        pvalue_seconds = clock.perf_counter() - started
+        self.last_timings = dict(index_transfer_seconds=index_seconds,
+                                 model_compute_seconds=compute_seconds,
+                                 result_transfer_seconds=transfer_seconds,
+                                 cpu_pvalue_seconds=pvalue_seconds)
+        result = (*arrays[:3], p_value)
+        return (*result, arrays[3]) if diagnostics else result
+
+    def fit(self, predictors, targets):
+        """Return coefficient, standard error, t and p arrays; invalid fits are NaN."""
+        return self._fit(predictors, targets, False)
+
+    def fit_with_diagnostics(self, predictors, targets):
+        """Return the usual test statistics plus residual sum of squares."""
+        return self._fit(predictors, targets, True)

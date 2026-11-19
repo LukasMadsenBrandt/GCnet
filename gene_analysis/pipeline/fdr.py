@@ -49,6 +49,7 @@ class FDRSettings:
     genome_stage: str = "report"
     genome_shards_per_invocation: int | None = None
     report_anchors: tuple[str, ...] = ()
+    interaction_model: str = "model0"
 
     def validate(self):
         if self.workflow not in {"both", "all_pairs", "anchor", "genome_all_pairs", "seed_genome"}:
@@ -63,6 +64,8 @@ class FDRSettings:
             raise ValueError("genome_shards_per_invocation must be positive.")
         if self.backend not in {"cpu_numpy", "gpu_cuda"}:
             raise ValueError("analysis.backend must be cpu_numpy or gpu_cuda.")
+        if self.interaction_model not in {"model0", "model1", "model2"}:
+            raise ValueError("interaction_model must be model0, model1 or model2.")
         if self.direction not in {"both", "outgoing", "incoming"}:
             raise ValueError("analysis.direction must be both, outgoing or incoming.")
         if self.duplicate_gene_method not in {"error", "mean", "median", "robust"}:

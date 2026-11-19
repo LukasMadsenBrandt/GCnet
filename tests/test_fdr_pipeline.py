@@ -38,6 +38,8 @@ def test_genome_resource_options_preserve_existing_fingerprint(sample_config):
     assert input_fingerprint(resources, *args)[1] == original
     changed = replace(sample_config, analysis=replace(sample_config.analysis, genome_expansion=False))
     assert input_fingerprint(changed, *args)[1] != original
+    changed_model = replace(sample_config, analysis=replace(sample_config.analysis, interaction_model="model1"))
+    assert input_fingerprint(changed_model, *args)[1] != original
 
 
 def test_quadratic_batches_match_independent_statsmodels():
@@ -54,6 +56,32 @@ def test_quadratic_batches_match_independent_statsmodels():
                                    [reference.params[-1], reference.bse[-1], reference.tvalues[-1], reference.pvalues[-1]],
                                    rtol=1e-10, atol=1e-12)
     assert p[0] != pytest.approx(p[1])
+
+
+@pytest.mark.parametrize("model_name", ["model0", "model1", "model2"])
+def test_genome_interaction_models_match_statsmodels(model_name):
+    rng = np.random.default_rng(39)
+    time = np.repeat(np.arange(5), 7).astype(float)
+    values = rng.normal(size=(35, 4)) + 3
+    values[:, 1] += .2 * time * values[:, 0]
+    model = QuadraticInteraction(values, time, model=model_name)
+    coefficient, se, statistic, p, sse = model.fit_with_diagnostics([0], [1])
+    columns = [np.ones(len(time)), time]
+    if model_name != "model2":
+        columns.append(time**2)
+    columns.extend([values[:, 0], time * values[:, 0]])
+    if model_name == "model1":
+        columns.append(values[:, 0]**2)
+    # Put the tested interaction last to compare its coefficient directly.
+    if model_name == "model1":
+        columns[-2], columns[-1] = columns[-1], columns[-2]
+    reference = sm.OLS(values[:, 1], np.column_stack(columns)).fit()
+    np.testing.assert_allclose(
+        [coefficient[0], se[0], statistic[0], p[0], sse[0]],
+        [reference.params[-1], reference.bse[-1], reference.tvalues[-1],
+         reference.pvalues[-1], reference.ssr],
+        rtol=1e-10, atol=1e-12,
+    )
 
 
 def test_rank_deficiency_and_self_pairs_are_failed():

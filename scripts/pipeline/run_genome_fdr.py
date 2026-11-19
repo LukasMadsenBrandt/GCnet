@@ -46,9 +46,9 @@ def main():
             ancestor = ancestor.parent
         print(json.dumps(dict(genes=len(genes), samples=len(times), tests=tests,
               expression_array_bytes=values.nbytes, output_directory=str(config.run_dir / "genome_fdr"),
-              uncompressed_raw_sorted_adjusted_bytes=96*tests,
+              uncompressed_raw_sorted_adjusted_bytes=104*tests,
               free_disk_bytes=shutil.disk_usage(ancestor).free,
-              note="96 bytes/test is a column-payload estimate, not a capacity guarantee; allow sort spill, Parquet overhead and headroom. No GPU used."), indent=2))
+              note="104 bytes/test is a column-payload estimate, not a capacity guarantee; allow sort spill, Parquet overhead, comparison exports and headroom. No GPU used."), indent=2))
         return
     for name, path in run_pipeline(config).items():
         print(f"{name}: {path}")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare cached FDR regression with the previous per-pair SVD on tiny synthetic data.
+"""Benchmark the three cached interaction models on tiny synthetic data.
 
 No real inputs, BH searches, checkpoint databases or full analyses are used.
 GPU timings include synchronous result transfers and CPU p-value calculation.
@@ -73,6 +73,7 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--cpu-only", action="store_true")
     parser.add_argument("--gpu-device", type=int, default=0)
+    parser.add_argument("--model", choices=["model0", "model1", "model2"], default="model0")
     parser.add_argument("--output-file", type=Path)
     args = parser.parse_args()
     if args.genes < 2 or args.pairs < 1 or args.repeats < 1:
@@ -83,27 +84,35 @@ def main():
     indices = np.arange(args.pairs)
     source = (indices // (args.genes - 1)) % args.genes
     target = (source + 1 + indices % (args.genes - 1)) % args.genes
-    report = {"samples": 35, "genes": args.genes, "pairs": args.pairs, "repeats": args.repeats,
-              "timing_scope": "warm fit, CPU p-values and result transfers; excludes preparation/checkpoints"}
-    cpu = QuadraticInteraction(values, times)
-    cached_cpu, reference = measure(lambda: cpu.fit(source, target), args.repeats)
-    old_cpu, old_reference = measure(legacy_fit(values, times, source, target, np), args.repeats)
-    for expected, actual in zip(reference, old_reference):
-        np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-11, equal_nan=True)
-    report.update(cached_cpu_seconds=cached_cpu, legacy_cpu_seconds=old_cpu,
+    report = {"model": args.model, "samples": 35, "genes": args.genes, "pairs": args.pairs,
+              "repeats": args.repeats,
+              "timing_scope": "warm fit with SSE diagnostic, CPU p-values and result transfers; excludes preparation/checkpoints"}
+    cpu = QuadraticInteraction(values, times, model=args.model)
+    cached_cpu, reference = measure(lambda: cpu.fit_with_diagnostics(source, target), args.repeats)
+    report.update(cached_cpu_seconds=cached_cpu,
                   cached_cpu_pairs_per_second=args.pairs / cached_cpu)
+    if args.model == "model0":
+        old_cpu, old_reference = measure(legacy_fit(values, times, source, target, np), args.repeats)
+        for expected, actual in zip(reference[:4], old_reference):
+            np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-11, equal_nan=True)
+        report.update(legacy_cpu_seconds=old_cpu)
     if not args.cpu_only:
-        gpu = QuadraticInteraction(values, times, backend="gpu_cuda", gpu_device=args.gpu_device)
-        cached_gpu, actual = measure(lambda: gpu.fit(source, target), args.repeats)
-        old_gpu, old_actual = measure(legacy_fit(values, times, source, target, gpu.xp), args.repeats)
-        for expected, new, old in zip(reference, actual, old_actual):
+        gpu = QuadraticInteraction(values, times, backend="gpu_cuda", gpu_device=args.gpu_device,
+                                   model=args.model)
+        cached_gpu, actual = measure(lambda: gpu.fit_with_diagnostics(source, target), args.repeats)
+        for expected, new in zip(reference, actual):
             np.testing.assert_allclose(new, expected, rtol=1e-8, atol=1e-11, equal_nan=True)
-            np.testing.assert_allclose(old, expected, rtol=1e-8, atol=1e-11, equal_nan=True)
-        report.update(cached_gpu_seconds=cached_gpu, legacy_gpu_seconds=old_gpu,
+        report.update(cached_gpu_seconds=cached_gpu,
                       cached_gpu_pairs_per_second=args.pairs / cached_gpu,
-                      gpu_cached_vs_legacy_speedup=old_gpu / cached_gpu,
                       cached_gpu_vs_cached_cpu_speedup=cached_cpu / cached_gpu,
+                      last_gpu_batch_breakdown=gpu.last_timings,
                       gpu_name=str(gpu.xp.cuda.runtime.getDeviceProperties(args.gpu_device)["name"]))
+        if args.model == "model0":
+            old_gpu, old_actual = measure(legacy_fit(values, times, source, target, gpu.xp), args.repeats)
+            for expected, old in zip(reference[:4], old_actual):
+                np.testing.assert_allclose(old, expected, rtol=1e-8, atol=1e-11, equal_nan=True)
+            report.update(legacy_gpu_seconds=old_gpu,
+                          gpu_cached_vs_legacy_speedup=old_gpu / cached_gpu)
     report["numerical_comparison"] = "passed"
     output = json.dumps(report, indent=2)
     print(output)

@@ -17,6 +17,7 @@ from gene_analysis.analysis.fdr import benjamini_hochberg
 from gene_analysis.analysis.storey import bootstrap_pi0, storey_qvalues
 from gene_analysis.pipeline.genome_fdr import GenomeFDRRunner, decode_pairs, family_pair_ids, pi0_from_counts, GRID
 from gene_analysis.pipeline.runner import PipelineConfig, run_pipeline
+from scripts.pipeline.compare_genome_models import compare
 
 
 @pytest.fixture
@@ -91,6 +92,15 @@ def test_global_reference_resume_and_graphs(genome_config, monkeypatch):
         assert path.stat().st_mtime_ns == mtime
         assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
     assert json.loads((root / "progress.json").read_text())["status"] == "complete"
+    timing = json.loads((root / "timing.json").read_text())
+    assert timing["status"] == "complete"
+    assert timing["invocations"] == 3
+    assert timing["active_runtime_seconds"] > 0
+    assert timing["calendar_span_seconds"] >= timing["active_runtime_seconds"]
+    assert set(timing["stages"]) == {
+        "preprocessing", "fit", "sort", "adjust", "selection", "report", "export"
+    }
+    assert sum(timing["stages"].values()) <= timing["active_runtime_seconds"]
     raw = _read_parts(root / "raw").sort_values("pair_id")
     assert raw.pair_id.tolist() == list(range(12*11))
     adjusted = _read_parts(root / "adjusted")
@@ -103,7 +113,7 @@ def test_global_reference_resume_and_graphs(genome_config, monkeypatch):
     np.testing.assert_allclose(adjusted.storey_q_value, expected_storey[ids], rtol=1e-14)
     assert np.all(np.diff(adjusted.bh_adjusted_p_value) >= 0)
     assert json.loads((root / "storey.json").read_text())["pi0"] == pytest.approx(details["pi0"])
-    for row in pd.read_csv(root / "cutoff_comparison.csv").itertuples():
+    for row in pd.read_csv(root / "cutoff_comparison.csv", float_precision="round_trip").itertuples():
         q = adjusted.bh_adjusted_p_value if row.method == "bh" else adjusted.storey_q_value
         selected = adjusted[q <= row.cutoff]
         a, b = selected.source_id.to_numpy(), selected.target_id.to_numpy()
@@ -140,10 +150,11 @@ def test_ties_cross_groups_and_cpu_postprocess_without_gpu(genome_config, monkey
         def __init__(self, *args, **kwargs):
             pass
 
-        def fit(self, source, target):
+        def fit_with_diagnostics(self, source, target):
             ids = source * 11 + target - (target > source)
             p = np.take([1e-15, 1e-5, .001, .2, .99, 1., np.nan], ids % 7)
-            return np.zeros(len(p)), np.ones(len(p)), np.zeros(len(p)), p
+            return (np.zeros(len(p)), np.ones(len(p)), np.zeros(len(p)), p,
+                    np.ones(len(p)))
 
     monkeypatch.setattr(module, "QuadraticInteraction", Model)
     run_pipeline(config)
@@ -173,9 +184,19 @@ def test_ties_cross_groups_and_cpu_postprocess_without_gpu(genome_config, monkey
     np.testing.assert_allclose(adjusted.bh_adjusted_p_value, bh[ids], rtol=1e-14)
     np.testing.assert_allclose(adjusted.storey_q_value, storey[ids], rtol=1e-14)
     assert adjusted.groupby("raw_p_value").bh_adjusted_p_value.nunique().max() == 1
-    for row in pd.read_csv(root / "cutoff_comparison.csv").itertuples():
+    for row in pd.read_csv(root / "cutoff_comparison.csv", float_precision="round_trip").itertuples():
         q = bh if row.method == "bh" else storey
         assert row.directed_connections == (q <= row.cutoff).sum()
+    selection = json.loads((root / "selection.json").read_text())
+    for method, q in (("bh", bh), ("storey", storey)):
+        finite = np.sort(q[np.isfinite(q)])
+        candidates = [(value, int((finite <= value).sum())) for value in np.unique(finite)]
+        expected = [(value, count) for value, count in candidates if value * count < 1][-1]
+        actual = selection["methods"][method]
+        assert actual["cutoff"] == pytest.approx(expected[0])
+        assert actual["selected_directed_connections"] == expected[1]
+        exported = pq.read_table(root / "model_comparison" / f"significant_pairs_{method}.parquet")
+        assert exported.num_rows == expected[1]
 
 
 @pytest.mark.parametrize("change, message", [
@@ -201,6 +222,7 @@ def test_corrupt_raw_checkpoint_is_refused(genome_config, change, message):
     {"workflow": "unknown"}, {"genome_stage": "unknown"},
     {"genome_shard_pairs": 0}, {"genome_sort_threads": 0},
     {"genome_shards_per_invocation": 0}, {"backend": "unknown"},
+    {"interaction_model": "unknown"},
     {"direction": "unknown"}, {"duplicate_gene_method": "unknown"},
     {"genome_expansion": "yes"}, {"alpha": 0}, {"batch_size": 0},
     {"max_seconds": -1},
@@ -268,7 +290,7 @@ def test_seed_genome_family_global_adjustments_and_multiple_anchors(genome_confi
     adjusted = _read_parts(root / "adjusted")
     expected_bh = pd.Series(benjamini_hochberg(raw.raw_p_value.to_numpy()), index=raw.pair_id)
     np.testing.assert_allclose(adjusted.bh_adjusted_p_value, expected_bh.loc[adjusted.pair_id], rtol=1e-14)
-    report = pd.read_csv(root / "anchor_cutoff_comparison.csv")
+    report = pd.read_csv(root / "anchor_cutoff_comparison.csv", float_precision="round_trip")
     assert set(report.anchor) == {"ZEB2", "G1"}
     for row in report.itertuples():
         q = adjusted.bh_adjusted_p_value if row.method == "bh" else adjusted.storey_q_value
@@ -288,3 +310,35 @@ def test_seed_pair_ids_cover_family_once_including_all_seed_case():
         assert len(set(ids)) == count
         assert set(zip(a,b)) == {(x,y) for x in range(5) for y in range(5)
                                  if x != y and (x in seeds or y in seeds)}
+
+
+def test_three_model_comparison_exports_common_and_seed_subsets(genome_config, monkeypatch, tmp_path):
+    import gene_analysis.pipeline.genome_fdr as module
+    genome_config.seed_gene_file.write_text("ZEB2\nG1\nG2\n")
+
+    class Model:
+        def __init__(self, *args, model, **kwargs):
+            self.model = model
+
+        def fit_with_diagnostics(self, source, target):
+            ids = source * 11 + target - (target > source)
+            p = np.where(ids % 5 == 0, 1e-12, .99)
+            sse = 1 + ids / 1000
+            return np.zeros(len(p)), np.ones(len(p)), np.zeros(len(p)), p, sse
+
+    monkeypatch.setattr(module, "QuadraticInteraction", Model)
+    paths = {}
+    for model in ("model0", "model1", "model2"):
+        config = replace(genome_config, run_name=f"comparison_{model}",
+                         analysis=replace(genome_config.analysis, interaction_model=model))
+        run_pipeline(config)
+        paths[model] = config.run_dir
+    output = compare(paths, "storey", tmp_path / "comparison")
+    model_level = pd.read_csv(output / "model_level_comparison.csv")
+    assert set(model_level.model) == {"model0", "model1", "model2"}
+    counts = pd.read_csv(output / "best_model_counts_all_common_pairs.csv")
+    assert counts.loc[counts.model.eq("model2"), "best_aic"].iloc[0] > 0
+    common = pq.read_table(output / "common_significant_pairs.parquet").to_pandas()
+    seed = pq.read_table(output / "common_significant_seed_pairs.parquet").to_pandas()
+    assert len(common) > 0
+    assert set(seed.pair_id).issubset(set(common.pair_id))
