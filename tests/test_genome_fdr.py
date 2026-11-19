@@ -69,6 +69,14 @@ def test_global_reference_resume_and_graphs(genome_config, monkeypatch):
     assert json.loads((root / "progress.json").read_text())["status"] == "paused"
     saved = {p: (p.stat().st_mtime_ns, hashlib.sha256(p.read_bytes()).hexdigest()) for p in (root / "raw").glob("*.parquet")}
     assert sum(pq.read_metadata(p).num_rows for p in saved) == 46
+    for path in saved:
+        metadata = pq.read_metadata(path)
+        assert metadata.num_row_groups == 1
+        for column in range(metadata.num_columns):
+            chunk = metadata.row_group(0).column(column)
+            assert chunk.compression == "SNAPPY"
+            assert chunk.statistics is None
+            assert "RLE_DICTIONARY" not in chunk.encodings
     assert not (root / "sorted_p.parquet").exists()  # No subset-family correction.
 
     original_sort = GenomeFDRRunner._sort
