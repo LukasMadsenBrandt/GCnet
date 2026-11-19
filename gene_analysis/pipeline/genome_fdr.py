@@ -183,7 +183,10 @@ class GenomeFDRRunner(FDRRunner):
             self.pq.write_table(table, temporary, compression="snappy",
                                 use_dictionary=False, write_statistics=False)
         else:
-            self.pq.write_table(table, temporary, compression="zstd", row_group_size=131072)
+            # Adjusted shards retain statistics for threshold pruning, while
+            # avoiding dictionaries for continuous q-value columns.
+            self.pq.write_table(table, temporary, compression="snappy",
+                                use_dictionary=False, write_statistics=True)
         _commit(temporary, path)
 
     def run(self):
@@ -414,7 +417,7 @@ class GenomeFDRRunner(FDRRunner):
             connection.execute("SET enable_progress_bar = false")
             query = (f"COPY (SELECT pair_id, raw_p_value FROM read_parquet({quote(self.directory / 'raw/*.parquet')}) "
                      f"WHERE isfinite(raw_p_value) ORDER BY raw_p_value, pair_id) TO {quote(temporary)} "
-                     "(FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 131072)")
+                     "(FORMAT PARQUET, COMPRESSION SNAPPY, ROW_GROUP_SIZE 1048576)")
             self.progress("sort", status="sorting_on_disk", estimable_tests=expected)
             with self._operation_timer("external_sort_duckdb"):
                 with ThreadPoolExecutor(max_workers=1) as executor:

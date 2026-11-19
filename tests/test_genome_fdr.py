@@ -112,6 +112,14 @@ def test_global_reference_resume_and_graphs(genome_config, monkeypatch):
     raw = _read_parts(root / "raw").sort_values("pair_id")
     assert raw.pair_id.tolist() == list(range(12*11))
     adjusted = _read_parts(root / "adjusted")
+    for path in (root / "adjusted").glob("*.parquet"):
+        metadata = pq.read_metadata(path)
+        assert metadata.num_row_groups == 1
+        for column in range(metadata.num_columns):
+            chunk = metadata.row_group(0).column(column)
+            assert chunk.compression == "SNAPPY"
+            assert chunk.statistics is not None
+            assert "RLE_DICTIONARY" not in chunk.encodings
     p = raw.raw_p_value.to_numpy()
     assert np.isnan(p).sum() >= 11
     expected_bh = benjamini_hochberg(p)
