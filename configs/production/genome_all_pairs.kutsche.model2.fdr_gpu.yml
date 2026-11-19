@@ -14,7 +14,7 @@ analysis:
   interaction_model: model2
   report_anchors: [ZEB2, ZBTB18, MECP2]
   backend: gpu_cuda
-  batch_size: 32768
+  batch_size: 262144
   duplicate_gene_method: mean
   alpha: 0.05
   comparison_alphas: [0.10]
