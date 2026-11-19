@@ -123,7 +123,15 @@ def compare(paths, method, output):
         match = graph[(graph.method == method) & np.isclose(graph.cutoff, cutoff, rtol=1e-12, atol=0)]
         if match.empty:
             raise ValueError(f"Automatic cutoff {cutoff} is absent from {model}'s graph report.")
+        largest_rows = match[match.anchor_in_largest_component == True]  # noqa: E712
+        if largest_rows.empty:
+            raise ValueError(f"No reported marker belongs to {model}'s largest component.")
+        seed_coverage = largest_rows.anchor_component_seed_genes.unique()
+        if len(seed_coverage) != 1:
+            raise ValueError(f"Inconsistent largest-component seed coverage for {model}.")
         row = match.iloc[0]
+        marker_membership = {str(record.anchor): bool(record.anchor_in_largest_component)
+                             for record in match.itertuples()}
         timing = run["timing"]
         model_rows.append(dict(
             model=model, equation=run["manifest"]["model"], parameters=run["manifest"]["model_parameters"],
@@ -132,7 +140,10 @@ def compare(paths, method, output):
             cutoff_times_pairs=selection["cutoff_times_selected"],
             largest_component_nodes=int(row.largest_component_nodes),
             reference_seed_genes=int(row.reference_seed_genes),
-            reference_seed_genes_in_largest_component=int(row.anchor_component_seed_genes),
+            reference_seed_genes_in_largest_component=int(seed_coverage[0]),
+            zeb2_in_largest_component=marker_membership.get("ZEB2", False),
+            zbtb18_in_largest_component=marker_membership.get("ZBTB18", False),
+            mecp2_in_largest_component=marker_membership.get("MECP2", False),
             failed_tests=run["summary"]["failed_tests"],
             planned_tests=run["summary"]["tests"],
             active_runtime_seconds=timing["active_runtime_seconds"],
