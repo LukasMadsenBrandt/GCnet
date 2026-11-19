@@ -171,7 +171,8 @@ def input_fingerprint(config, values, times, genes, subset):
         semantic.pop("backend")
     for key in ("batch_size", "max_seconds"):
         semantic.pop(key)
-    specification = {"schema": 1, "settings": semantic, "genes": genes, "subset": subset,
+    specification = {"schema": 2, "statistical_kernel": "residual_floor_v1",
+                     "settings": semantic, "genes": genes, "subset": subset,
                      "anchor": config.gene_of_interest,
                      "normalize": config.preprocessing.normalize,
                      "transform": config.preprocessing.transform}

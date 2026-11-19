@@ -1,0 +1,31 @@
+# Predictor-quadratic model with numerical zero-residual fits treated as non-estimable.
+run_name: kutsche_genome_model1_residual_guard_fdr_gpu
+dataset:
+  name: kutsche
+  expression_file: Data/Kutsche/Kutsche_Counts.txt
+gene_of_interest: ZEB2
+seed_gene_file: Data/Kutsche/unique_genes.txt
+preprocessing:
+  normalize: deseq
+  transform: log1p
+analysis:
+  mode: fdr
+  workflow: genome_all_pairs
+  interaction_model: model1
+  report_anchors: [ZEB2, ZBTB18, MECP2]
+  backend: gpu_cuda
+  batch_size: 262144
+  duplicate_gene_method: mean
+  alpha: 0.05
+  comparison_alphas: [0.10]
+  genome_expansion: false
+  genome_shard_pairs: 1048576
+  genome_sort_memory: 192GB
+  genome_sort_threads: 32
+  genome_stage: report
+  genome_shards_per_invocation: null
+  max_seconds: null
+execution:
+  resume: true
+  progress: true
+  gpu_device: 0

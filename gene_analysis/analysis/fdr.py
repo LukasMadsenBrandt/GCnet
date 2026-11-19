@@ -77,6 +77,12 @@ class QuadraticInteraction:
         self.df = self.samples - self.parameters
         values = values - values.mean(axis=0)
         self.target_sum_squares = np.sum(values**2, axis=0)
+        # An exact fit has no estimable error variance. Roundoff in QR/SVD can
+        # leave a tiny positive RSS and turn floating-point noise into enormous
+        # t statistics. Use the squared backward-error scale for a dot-product
+        # residual to distinguish numerical zero from a genuinely small RSS.
+        residual_scale = (np.finfo(float).eps * max(self.samples, self.parameters))**2
+        self.residual_numerical_floor = xp.asarray(self.target_sum_squares * residual_scale)
         baseline_q = np.linalg.qr(baseline, mode="reduced")[0]
         interaction = time[:, None] * values
         design_norm = values**2 + interaction**2
@@ -126,6 +132,7 @@ class QuadraticInteraction:
         coefficient = xp.einsum("bn,bn->b", self.contrast[source], response)
         standard_error = xp.sqrt(variance) * self.se_scale[source]
         valid &= (standard_error > 0) & xp.isfinite(standard_error)
+        valid &= residual_sum_squares > self.residual_numerical_floor[target]
         valid &= source != target
         statistic = coefficient / xp.where(standard_error > 0, standard_error, 1)
         values = (coefficient, standard_error, statistic, residual_sum_squares)

@@ -92,6 +92,21 @@ def test_rank_deficiency_and_self_pairs_are_failed():
     assert np.isnan(p).all()
 
 
+@pytest.mark.parametrize("model_name", ["model0", "model1", "model2"])
+def test_machine_precision_exact_fits_are_failed(model_name):
+    rng = np.random.default_rng(910)
+    time = np.repeat(np.arange(5), 7).astype(float)
+    predictor = rng.normal(size=len(time))
+    target = 1.2 + .3*time + 1.1*predictor + .7*time*predictor
+    if model_name != "model2":
+        target += .2*time**2
+    if model_name == "model1":
+        target += .4*predictor**2
+    values = np.column_stack([predictor, target, rng.normal(size=len(time))])
+    result = QuadraticInteraction(values, time, model=model_name).fit_with_diagnostics([0], [1])
+    assert all(np.isnan(column[0]) for column in result)
+
+
 def test_repeated_predictor_batches_reuse_prepared_factorization(monkeypatch):
     rng = np.random.default_rng(84)
     time = np.repeat(np.arange(5), 7).astype(float)

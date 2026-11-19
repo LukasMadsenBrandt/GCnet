@@ -104,7 +104,7 @@ def _diagnose_locked(config, root, family, samples_per_category, fetch_size):
     progress = json.loads((root / "progress.json").read_text(encoding="utf-8"))
     if progress.get("status") != "complete":
         raise ValueError("This diagnostic expects a completed pipeline run.")
-    if manifest.get("schema") != 1:
+    if manifest.get("schema") not in {1, 2}:
         raise ValueError("Unsupported manifest schema.")
     print("Failure diagnostics: loading and verifying expression input (CPU only)", flush=True)
     values, times, genes, subset, _missing = load_samples(config)
