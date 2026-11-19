@@ -107,6 +107,17 @@ def test_machine_precision_exact_fits_are_failed(model_name):
     assert all(np.isnan(column[0]) for column in result)
 
 
+def test_residual_variance_below_float64_resolution_is_failed():
+    rng = np.random.default_rng(911)
+    time = np.repeat(np.arange(5), 7).astype(float)
+    predictor = rng.normal(size=len(time))
+    target = (1.2 + .3*time + .2*time**2 + 1.1*predictor + .7*time*predictor
+              + .4*predictor**2 + 1e-9*rng.normal(size=len(time)))
+    values = np.column_stack([predictor, target])
+    result = QuadraticInteraction(values, time, model="model1").fit_with_diagnostics([0], [1])
+    assert all(np.isnan(column[0]) for column in result)
+
+
 def test_repeated_predictor_batches_reuse_prepared_factorization(monkeypatch):
     rng = np.random.default_rng(84)
     time = np.repeat(np.arange(5), 7).astype(float)
