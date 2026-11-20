@@ -1,5 +1,5 @@
 # Quadratic-time model with numerical zero-residual fits treated as non-estimable.
-run_name: kutsche_genome_model0_residual_guard_v2_fdr_gpu
+run_name: kutsche_genome_model0_expressed_10x7_fdr_gpu
 dataset:
   name: kutsche
   expression_file: Data/Kutsche/Kutsche_Counts.txt
@@ -16,6 +16,9 @@ analysis:
   backend: gpu_cuda
   batch_size: 262144
   duplicate_gene_method: mean
+  # Retain genes with at least 10 raw counts in at least 7 of 35 WT samples.
+  expression_filter_min_count: 10
+  expression_filter_min_samples: 7
   alpha: 0.05
   comparison_alphas: [0.10]
   genome_expansion: false

@@ -11,7 +11,7 @@ import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
 
 from gene_analysis.analysis.fdr import QuadraticInteraction, benjamini_hochberg
-from gene_analysis.pipeline.fdr import FDRRunner, FDRSettings, Family, input_fingerprint
+from gene_analysis.pipeline.fdr import FDRRunner, FDRSettings, Family, input_fingerprint, load_samples
 from gene_analysis.pipeline.runner import PipelineConfig, run_pipeline
 
 
@@ -40,6 +40,45 @@ def test_genome_resource_options_preserve_existing_fingerprint(sample_config):
     assert input_fingerprint(changed, *args)[1] != original
     changed_model = replace(sample_config, analysis=replace(sample_config.analysis, interaction_model="model1"))
     assert input_fingerprint(changed_model, *args)[1] != original
+
+
+def test_kutsche_raw_count_filter_precedes_preprocessing(tmp_path):
+    columns = [f"WTd{day}_{replicate}" for day in range(5) for replicate in range(7)]
+    rows = {
+        "ZEB2": [20] * 35,
+        "KEPT": [10] * 7 + [0] * 28,
+        "DROPPED": [10] * 6 + [0] * 29,
+    }
+    expression = tmp_path / "counts.tsv"
+    pd.DataFrame.from_dict(rows, orient="index", columns=columns).rename_axis("Gene").to_csv(
+        expression, sep="\t"
+    )
+    seeds = tmp_path / "seeds.txt"
+    seeds.write_text("ZEB2\nKEPT\nDROPPED\n", encoding="utf-8")
+    config = PipelineConfig.from_dict({
+        "run_name": "filtered",
+        "dataset": {"name": "kutsche", "expression_file": str(expression)},
+        "gene_of_interest": "ZEB2",
+        "seed_gene_file": str(seeds),
+        "preprocessing": {"normalize": "none", "transform": "none"},
+        "analysis": {
+            "mode": "fdr", "workflow": "genome_all_pairs", "backend": "cpu_numpy",
+            "expression_filter_min_count": 10, "expression_filter_min_samples": 7,
+        },
+    })
+    values, times, genes, subset, missing = load_samples(config)
+    assert genes == ["ZEB2", "KEPT"]
+    assert values.shape == (35, 2)
+    assert len(times) == 35
+    assert subset == [0, 1]
+    assert missing == []
+
+
+def test_expression_filter_settings_are_validated():
+    with pytest.raises(ValueError, match="nonnegative"):
+        FDRSettings(expression_filter_min_count=-1).validate()
+    with pytest.raises(ValueError, match="positive"):
+        FDRSettings(expression_filter_min_count=10, expression_filter_min_samples=0).validate()
 
 
 def test_quadratic_batches_match_independent_statsmodels():

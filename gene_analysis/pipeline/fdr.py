@@ -50,6 +50,8 @@ class FDRSettings:
     genome_shards_per_invocation: int | None = None
     report_anchors: tuple[str, ...] = ()
     interaction_model: str = "model0"
+    expression_filter_min_count: float | None = None
+    expression_filter_min_samples: int = 1
 
     def validate(self):
         if self.workflow not in {"both", "all_pairs", "anchor", "genome_all_pairs", "seed_genome"}:
@@ -66,6 +68,12 @@ class FDRSettings:
             raise ValueError("analysis.backend must be cpu_numpy or gpu_cuda.")
         if self.interaction_model not in {"model0", "model1", "model2"}:
             raise ValueError("interaction_model must be model0, model1 or model2.")
+        if self.expression_filter_min_count is not None:
+            if (not np.isfinite(self.expression_filter_min_count)
+                    or self.expression_filter_min_count < 0):
+                raise ValueError("expression_filter_min_count must be nonnegative and finite.")
+            if self.expression_filter_min_samples < 1:
+                raise ValueError("expression_filter_min_samples must be positive.")
         if self.direction not in {"both", "outgoing", "incoming"}:
             raise ValueError("analysis.direction must be both, outgoing or incoming.")
         if self.duplicate_gene_method not in {"error", "mean", "median", "robust"}:
@@ -120,6 +128,15 @@ def load_samples(config):
             if config.analysis.duplicate_gene_method == "error":
                 raise ValueError("Duplicate gene symbols in input; set analysis.duplicate_gene_method explicitly.")
             raw = aggregate_duplicate_genes(raw, method=config.analysis.duplicate_gene_method)
+        if config.analysis.expression_filter_min_count is not None:
+            wt_columns = [column for column in raw.columns if "WT" in column]
+            required = config.analysis.expression_filter_min_samples
+            if required > len(wt_columns):
+                raise ValueError(
+                    "expression_filter_min_samples exceeds the number of WT samples."
+                )
+            retained = (raw[wt_columns] >= config.analysis.expression_filter_min_count).sum(axis=1)
+            raw = raw.loc[retained >= required]
         expression, days, columns = filter_data_wt(
             raw, normalize=config.preprocessing.normalize,
             transformed=config.preprocessing.transform,
@@ -129,6 +146,10 @@ def load_samples(config):
         if not np.array_equal(unique_days, np.arange(5)) or not np.all(counts == 7):
             raise ValueError("Kutsche FDR expects seven unaggregated WT samples at each of days 0-4.")
     else:
+        if config.analysis.expression_filter_min_count is not None:
+            raise ValueError(
+                "Raw-count expression filtering is currently supported only for the Kutsche count matrix."
+            )
         raw = pd.read_csv(config.dataset.expression_file)
         required = {"Gene", "Sample", "Day", "Expression"}
         if not required.issubset(raw.columns):
